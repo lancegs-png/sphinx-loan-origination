@@ -17,6 +17,11 @@ export function PipelineHome({ loans, profile }: { loans: Loan[]; profile: Profi
           <p className="text-muted">{profile.email}</p>
         </div>
         <div className="flex items-center gap-3">
+          {profile.lender_user_type === "admin" && (
+            <Link href="/admin" className="rounded-md border border-line px-4 py-2.5 font-medium">
+              Admin
+            </Link>
+          )}
           <form action={addLoan}>
             <button className="rounded-md bg-fg px-4 py-2.5 font-medium text-white">+ Add Loan</button>
           </form>

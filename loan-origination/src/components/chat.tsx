@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { askAi } from "@/app/actions";
+import { askAi, intakeTurn } from "@/app/actions";
 import type { Message } from "@/lib/types";
 
 function roleLabel(m: Message): string {
@@ -26,12 +26,14 @@ export function Chat({
   currentUserId,
   currentRole,
   isLender,
+  intakeMode,
 }: {
   loanId: string;
   initialMessages: Message[];
   currentUserId: string;
   currentRole: string;
   isLender: boolean;
+  intakeMode: boolean;
 }) {
   const supabase = createClient();
   const [messages, setMessages] = useState<Message[]>(initialMessages);
@@ -91,9 +93,19 @@ export function Chat({
     const text = body.trim();
     if (!text) return;
     setBusy(true);
-    const ok = await insertHuman(text, internal);
+    const ok = await insertHuman(text, intakeMode ? false : internal);
     setBusy(false);
-    if (ok) setBody("");
+    if (!ok) return;
+    setBody("");
+
+    // While the loan is in Intake, each message drives the AI intake conversation.
+    if (intakeMode) {
+      setAiError(null);
+      setAiBusy(true);
+      const res = await intakeTurn(loanId);
+      setAiBusy(false);
+      if (!res.ok) setAiError(res.error ?? "Intake couldn’t continue.");
+    }
   }
 
   async function ask() {
@@ -131,13 +143,17 @@ export function Chat({
       </div>
 
       <form onSubmit={send} className="border-t border-line px-6 py-4">
-        {aiBusy && <p className="mb-2 text-sm text-muted">AI record keeper is thinking…</p>}
+        {aiBusy && (
+          <p className="mb-2 text-sm text-muted">
+            {intakeMode ? "Setting up the loan…" : "AI record keeper is thinking…"}
+          </p>
+        )}
         {aiError && (
           <p className="mb-2 text-sm" style={{ color: "var(--status-outstanding)" }}>
             {aiError}
           </p>
         )}
-        {isLender && (
+        {isLender && !intakeMode && (
           <label className="mb-2 flex items-center gap-2 text-sm text-muted">
             <input
               type="checkbox"
@@ -155,20 +171,22 @@ export function Chat({
               if (e.key === "Enter" && !e.shiftKey) send(e);
             }}
             rows={2}
-            placeholder="Message the team, or ask the AI…"
+            placeholder={intakeMode ? "Answer to continue setup…" : "Message the team, or ask the AI…"}
             className="min-h-11 flex-1 resize-none rounded-md border border-line px-3 py-2.5 text-base"
           />
-          <button
-            type="button"
-            onClick={ask}
-            disabled={aiBusy || busy}
-            className="rounded-md border border-line px-4 py-2.5 font-medium disabled:opacity-50"
-          >
-            Ask AI
-          </button>
+          {!intakeMode && (
+            <button
+              type="button"
+              onClick={ask}
+              disabled={aiBusy || busy}
+              className="rounded-md border border-line px-4 py-2.5 font-medium disabled:opacity-50"
+            >
+              Ask AI
+            </button>
+          )}
           <button
             type="submit"
-            disabled={busy}
+            disabled={busy || aiBusy}
             className="rounded-md bg-fg px-5 py-2.5 font-medium text-white disabled:opacity-50"
           >
             Send

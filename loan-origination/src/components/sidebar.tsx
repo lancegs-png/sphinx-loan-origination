@@ -5,6 +5,10 @@ import type { InternalNote, Loan, Participant } from "@/lib/types";
 
 type Tab = "people" | "documents" | "loan" | "notes";
 
+function prettyKey(k: string): string {
+  return k.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 function participantRoleLabel(role: string) {
   if (role === "lending_team") return "Lending team";
   if (role === "originator") return "Originator";
@@ -76,6 +80,10 @@ export function Sidebar({
             <Field label="Property" value={loan.property_address} />
             <Field label="Borrower" value={loan.borrower_name} />
             <Field label="Expected close" value={loan.expected_close_date} />
+            {loan.custom_fields &&
+              Object.entries(loan.custom_fields).map(([k, v]) => (
+                <Field key={k} label={prettyKey(k)} value={v == null ? null : String(v)} />
+              ))}
           </dl>
         )}
 

@@ -21,6 +21,7 @@ export type Loan = {
   property_address: string | null;
   borrower_name: string | null;
   expected_close_date: string | null;
+  custom_fields?: Record<string, unknown> | null;
   created_at: string;
 };
 

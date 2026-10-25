@@ -12,6 +12,7 @@ export function DealView({
   currentUserId,
   currentRole,
   isLender,
+  intakeMode,
 }: {
   loan: Loan;
   messages: Message[];
@@ -20,6 +21,7 @@ export function DealView({
   currentUserId: string;
   currentRole: string;
   isLender: boolean;
+  intakeMode: boolean;
 }) {
   return (
     <div className="flex h-screen flex-col">
@@ -54,6 +56,7 @@ export function DealView({
           currentUserId={currentUserId}
           currentRole={currentRole}
           isLender={isLender}
+          intakeMode={intakeMode}
         />
         <Sidebar
           loan={loan}

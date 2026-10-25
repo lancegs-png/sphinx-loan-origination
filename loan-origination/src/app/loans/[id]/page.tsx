@@ -57,6 +57,7 @@ export default async function LoanPage({
       currentUserId={userId}
       currentRole={myRole}
       isLender={isLender}
+      intakeMode={(loan as Loan).stage === "intake"}
     />
   );
 }
