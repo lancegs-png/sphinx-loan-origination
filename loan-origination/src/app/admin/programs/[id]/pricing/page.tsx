@@ -27,7 +27,7 @@ export default async function PricingPage({ params }: { params: Promise<{ id: st
     <ProgramPricingEditor
       programId={id}
       programName={program.name}
-      initialMode={(pricing?.mode as "model" | "guidelines") ?? "guidelines"}
+      initialMode={(pricing?.mode as "model" | "guidelines" | "document") ?? "guidelines"}
       initialGuidelines={pricing?.guidelines ?? ""}
       initialModel={(pricing?.model as Record<string, string | number>) ?? {}}
     />

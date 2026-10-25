@@ -11,7 +11,7 @@ export default async function UsersPage() {
   const supabase = await createClient();
   const { data } = await supabase
     .from("profiles")
-    .select("id,email,full_name,is_lending_team,lender_user_type")
+    .select("id,email,full_name,is_lending_team,lender_user_type,external_type")
     .order("created_at");
 
   return <UsersRolesEditor initial={(data as UserRow[]) ?? []} currentUserId={session.userId} />;

@@ -247,21 +247,74 @@ export async function deleteDocumentType(id: string): Promise<{ ok: boolean; err
   return { ok: true };
 }
 
-export async function setUserRole(input: {
+export type UserType = "borrower" | "originator" | "account_manager" | "operations" | "admin";
+
+function rolesFromType(t: UserType) {
+  const isLender = t === "admin" || t === "operations" || t === "account_manager";
+  return {
+    is_lending_team: isLender,
+    lender_user_type: isLender ? t : null,
+    external_type: isLender ? null : t,
+  };
+}
+
+export async function setUserType(input: {
   userId: string;
-  isLendingTeam: boolean;
-  lenderUserType: "admin" | "operations" | "account_manager" | null;
+  userType: UserType;
 }): Promise<{ ok: boolean; error?: string }> {
   const supabase = await createClient();
   const { error } = await supabase
     .from("profiles")
-    .update({
-      is_lending_team: input.isLendingTeam,
-      lender_user_type: input.isLendingTeam ? input.lenderUserType : null,
-    })
+    .update(rolesFromType(input.userType))
     .eq("id", input.userId);
   if (error) return { ok: false, error: error.message };
   return { ok: true };
+}
+
+/**
+ * Admin: create a new user with a type. Creates the auth account (email pre-confirmed,
+ * so no email is sent), sets their profile type, and returns a one-time temp password.
+ */
+export async function addUser(input: {
+  email: string;
+  fullName: string;
+  userType: UserType;
+}): Promise<{ ok: boolean; error?: string; tempPassword?: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+  const { data: me } = await supabase
+    .from("profiles")
+    .select("lender_user_type")
+    .eq("id", user.id)
+    .single();
+  if (me?.lender_user_type !== "admin") return { ok: false, error: "Admins only." };
+
+  const email = input.email.trim().toLowerCase();
+  if (!email) return { ok: false, error: "Email required." };
+
+  const admin = createServiceRoleClient();
+  const tempPassword = `Tmp-${Math.random().toString(36).slice(2, 10)}${Math.floor(Math.random() * 90 + 10)}`;
+
+  const { data: created, error: createErr } = await admin.auth.admin.createUser({
+    email,
+    password: tempPassword,
+    email_confirm: true,
+    user_metadata: { full_name: input.fullName.trim() || null },
+  });
+  if (createErr || !created?.user) {
+    return { ok: false, error: createErr?.message ?? "Could not create user." };
+  }
+
+  const { error } = await admin
+    .from("profiles")
+    .update({ full_name: input.fullName.trim() || null, ...rolesFromType(input.userType) })
+    .eq("id", created.user.id);
+  if (error) return { ok: false, error: error.message };
+
+  return { ok: true, tempPassword };
 }
 
 export type ChecklistItemInput = {
@@ -301,7 +354,7 @@ export async function saveProgramChecklist(
 
 export async function saveProgramPricing(input: {
   programId: string;
-  mode: "model" | "guidelines";
+  mode: "model" | "guidelines" | "document";
   guidelines: string;
   model: Record<string, unknown>;
 }): Promise<{ ok: boolean; error?: string }> {
@@ -318,6 +371,59 @@ export async function saveProgramPricing(input: {
   );
   if (error) return { ok: false, error: error.message };
   return { ok: true };
+}
+
+/**
+ * Admin: upload a pricing document (e.g. a rate sheet) for a program. Stored in the
+ * private "pricing" Storage bucket; the program's pricing switches to "document" mode
+ * with the file reference kept in program_pricing.model.
+ */
+export async function uploadPricingDocument(
+  formData: FormData,
+): Promise<{ ok: boolean; error?: string; fileName?: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+  const { data: me } = await supabase
+    .from("profiles")
+    .select("lender_user_type")
+    .eq("id", user.id)
+    .single();
+  if (me?.lender_user_type !== "admin") return { ok: false, error: "Admins only." };
+
+  const programId = String(formData.get("programId") ?? "");
+  const file = formData.get("file");
+  if (!programId || !(file instanceof File) || file.size === 0) {
+    return { ok: false, error: "No file provided." };
+  }
+
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+  const path = `${programId}/${Date.now()}_${safeName}`;
+
+  const admin = createServiceRoleClient();
+  const { error: upErr } = await admin.storage
+    .from("pricing")
+    .upload(path, bytes, {
+      contentType: file.type || "application/octet-stream",
+      upsert: true,
+    });
+  if (upErr) return { ok: false, error: upErr.message };
+
+  const { error } = await supabase.from("program_pricing").upsert(
+    {
+      program_id: programId,
+      mode: "document",
+      model: { file_path: path, file_name: file.name },
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "program_id" },
+  );
+  if (error) return { ok: false, error: error.message };
+
+  return { ok: true, fileName: file.name };
 }
 
 /**
