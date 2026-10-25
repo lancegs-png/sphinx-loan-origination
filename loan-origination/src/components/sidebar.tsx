@@ -1,13 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import type { InternalNote, Loan, Participant } from "@/lib/types";
+import { LoanData } from "./loan-data";
+import type { FieldDef, InternalNote, Loan, Participant } from "@/lib/types";
 
 type Tab = "people" | "documents" | "loan" | "notes";
-
-function prettyKey(k: string): string {
-  return k.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-}
 
 function participantRoleLabel(role: string) {
   if (role === "lending_team") return "Lending team";
@@ -21,11 +18,15 @@ export function Sidebar({
   participants,
   internalNotes,
   isLender,
+  fieldDefs,
+  tradeValues,
 }: {
   loan: Loan;
   participants: Participant[];
   internalNotes: InternalNote[];
   isLender: boolean;
+  fieldDefs: FieldDef[];
+  tradeValues: Record<string, unknown>;
 }) {
   const [tab, setTab] = useState<Tab>("people");
 
@@ -73,18 +74,14 @@ export function Sidebar({
         {tab === "documents" && <p className="text-muted">No documents yet.</p>}
 
         {tab === "loan" && (
-          <dl className="space-y-3">
-            <Field label="Loan number" value={loan.loan_number} />
-            <Field label="Loan type" value={loan.loan_type} />
-            <Field label="Amount" value={loan.loan_amount != null ? `$${loan.loan_amount.toLocaleString()}` : null} />
-            <Field label="Property" value={loan.property_address} />
-            <Field label="Borrower" value={loan.borrower_name} />
-            <Field label="Expected close" value={loan.expected_close_date} />
-            {loan.custom_fields &&
-              Object.entries(loan.custom_fields).map(([k, v]) => (
-                <Field key={k} label={prettyKey(k)} value={v == null ? null : String(v)} />
-              ))}
-          </dl>
+          <LoanData
+            loan={loan}
+            fieldDefs={fieldDefs}
+            customFields={(loan.custom_fields as Record<string, unknown>) ?? {}}
+            tradeValues={tradeValues}
+            canEdit={isLender}
+            isLender={isLender}
+          />
         )}
 
         {tab === "notes" && isLender && (
@@ -100,14 +97,5 @@ export function Sidebar({
         )}
       </div>
     </aside>
-  );
-}
-
-function Field({ label, value }: { label: string; value: string | null | undefined }) {
-  return (
-    <div>
-      <dt className="text-muted">{label}</dt>
-      <dd className="font-medium">{value ?? "—"}</dd>
-    </div>
   );
 }

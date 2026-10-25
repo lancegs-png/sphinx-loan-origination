@@ -56,6 +56,16 @@ export type Participant = {
   profiles?: Profile | null;
 };
 
+export type FieldDef = {
+  key: string;
+  label: string;
+  section: string; // loan | property | borrower | guarantor | trade
+  type: "text" | "number" | "currency" | "percent" | "date" | "select";
+  options: string[];
+  lender_only: boolean;
+  sort: number;
+};
+
 export type InternalNote = {
   id: string;
   loan_id: string;

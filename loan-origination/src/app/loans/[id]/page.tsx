@@ -2,7 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { getSessionProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { DealView } from "@/components/deal-view";
-import type { InternalNote, Loan, Message, Participant } from "@/lib/types";
+import type { FieldDef, InternalNote, Loan, Message, Participant } from "@/lib/types";
 
 export default async function LoanPage({
   params,
@@ -43,6 +43,18 @@ export default async function LoanPage({
       ).data as InternalNote[]) ?? []
     : [];
 
+  const { data: fieldDefs } = await supabase
+    .from("field_definitions")
+    .select("key,label,section,type,options,lender_only,sort")
+    .order("sort");
+
+  // Trade values are lender-only (RLS returns nothing for borrowers).
+  const tradeValues: Record<string, unknown> = isLender
+    ? (((
+        await supabase.from("loan_trade").select("values").eq("loan_id", id).single()
+      ).data?.values as Record<string, unknown>) ?? {})
+    : {};
+
   const parts = (participants as Participant[]) ?? [];
   const myRole =
     parts.find((p) => p.user_id === userId)?.participant_role ??
@@ -58,6 +70,8 @@ export default async function LoanPage({
       currentRole={myRole}
       isLender={isLender}
       intakeMode={(loan as Loan).stage === "intake"}
+      fieldDefs={(fieldDefs as FieldDef[]) ?? []}
+      tradeValues={tradeValues}
     />
   );
 }

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { StageBar } from "./stage-bar";
 import { Chat } from "./chat";
 import { Sidebar } from "./sidebar";
-import type { InternalNote, Loan, Message, Participant } from "@/lib/types";
+import type { FieldDef, InternalNote, Loan, Message, Participant } from "@/lib/types";
 
 export function DealView({
   loan,
@@ -13,6 +13,8 @@ export function DealView({
   currentRole,
   isLender,
   intakeMode,
+  fieldDefs,
+  tradeValues,
 }: {
   loan: Loan;
   messages: Message[];
@@ -22,6 +24,8 @@ export function DealView({
   currentRole: string;
   isLender: boolean;
   intakeMode: boolean;
+  fieldDefs: FieldDef[];
+  tradeValues: Record<string, unknown>;
 }) {
   return (
     <div className="flex h-screen flex-col">
@@ -63,6 +67,8 @@ export function DealView({
           participants={participants}
           internalNotes={internalNotes}
           isLender={isLender}
+          fieldDefs={fieldDefs}
+          tradeValues={tradeValues}
         />
       </div>
     </div>

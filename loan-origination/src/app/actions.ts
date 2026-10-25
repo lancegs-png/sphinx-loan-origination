@@ -217,6 +217,61 @@ export async function saveGlobalIntakeConfig(input: {
   return { ok: true };
 }
 
+// ---------- Loan Data view: edit a single field, routed by its section ----------
+
+// Fields that live in typed columns on loans (used by pipeline/top bar).
+const CORE_COLUMNS: Record<string, string> = {
+  loan_type: "loan_type",
+  loan_amount: "loan_amount",
+  property_address: "property_address",
+  borrower_name: "borrower_name",
+  expected_close_date: "expected_close_date",
+};
+
+export async function saveLoanField(input: {
+  loanId: string;
+  key: string;
+  section: string;
+  value: string;
+}): Promise<{ ok: boolean; error?: string }> {
+  const supabase = await createClient();
+  const { data: loan } = await supabase
+    .from("loans")
+    .select("custom_fields")
+    .eq("id", input.loanId)
+    .single();
+  if (!loan) return { ok: false, error: "No access to this loan." };
+
+  const raw = input.value;
+
+  if (input.key in CORE_COLUMNS) {
+    const col = CORE_COLUMNS[input.key];
+    let val: string | number | null = raw === "" ? null : raw;
+    if (col === "loan_amount") val = raw === "" ? null : Number(raw);
+    const { error } = await supabase.from("loans").update({ [col]: val }).eq("id", input.loanId);
+    if (error) return { ok: false, error: error.message };
+  } else if (input.section === "trade") {
+    const { data: cur } = await supabase
+      .from("loan_trade")
+      .select("values")
+      .eq("loan_id", input.loanId)
+      .single();
+    const values = { ...((cur?.values as Record<string, unknown>) ?? {}), [input.key]: raw };
+    const { error } = await supabase
+      .from("loan_trade")
+      .upsert(
+        { loan_id: input.loanId, values, updated_at: new Date().toISOString() },
+        { onConflict: "loan_id" },
+      );
+    if (error) return { ok: false, error: error.message };
+  } else {
+    const custom = { ...((loan.custom_fields as Record<string, unknown>) ?? {}), [input.key]: raw };
+    const { error } = await supabase.from("loans").update({ custom_fields: custom }).eq("id", input.loanId);
+    if (error) return { ok: false, error: error.message };
+  }
+  return { ok: true };
+}
+
 // ---------- Admin backend: document types, checklists, pricing, users ----------
 
 export async function saveDocumentType(input: {
