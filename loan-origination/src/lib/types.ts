@@ -25,6 +25,18 @@ export type Loan = {
   created_at: string;
 };
 
+export type FormFieldSpec = {
+  key: string;
+  label: string;
+  type?: "text" | "number" | "currency" | "date" | "select";
+  options?: string[];
+  required?: boolean;
+};
+
+export type MessagePayload = {
+  form?: { intro?: string; fields: FormFieldSpec[] };
+};
+
 export type Message = {
   id: string;
   loan_id: string;
@@ -33,6 +45,7 @@ export type Message = {
   sender_role: string | null;
   is_internal: boolean;
   body: string;
+  payload?: MessagePayload | null;
   created_at: string;
 };
 

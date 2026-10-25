@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { askAi, intakeTurn } from "@/app/actions";
+import { IntakeFormCard } from "@/components/intake-form-card";
 import type { Message } from "@/lib/types";
 
 function roleLabel(m: Message): string {
@@ -108,6 +109,23 @@ export function Chat({
     }
   }
 
+  async function submitForm(fields: { key: string; label: string }[], values: Record<string, string>) {
+    const text = fields
+      .filter((f) => values[f.key] != null && values[f.key] !== "")
+      .map((f) => `${f.label}: ${values[f.key]}`)
+      .join("; ");
+    if (!text) return;
+    setBusy(true);
+    const ok = await insertHuman(text, false);
+    setBusy(false);
+    if (!ok) return;
+    setAiError(null);
+    setAiBusy(true);
+    const res = await intakeTurn(loanId, text);
+    setAiBusy(false);
+    if (!res.ok) setAiError(res.error ?? "Intake couldn’t continue.");
+  }
+
   async function ask() {
     const text = body.trim();
     if (!text) return;
@@ -127,7 +145,7 @@ export function Chat({
   return (
     <section className="flex min-h-0 flex-1 flex-col">
       <div className="flex-1 space-y-5 overflow-y-auto px-6 py-6">
-        {messages.map((m) => (
+        {messages.map((m, idx) => (
           <div key={m.id}>
             <div className="mb-1 flex items-baseline gap-2 text-sm text-muted">
               <span className="font-semibold text-fg">{roleLabel(m)}</span>
@@ -137,6 +155,13 @@ export function Chat({
               <span>{new Date(m.created_at).toLocaleString()}</span>
             </div>
             <p className="whitespace-pre-wrap">{m.body}</p>
+            {m.payload?.form && intakeMode && idx === messages.length - 1 && (
+              <IntakeFormCard
+                form={m.payload.form}
+                disabled={busy || aiBusy}
+                onSubmit={(values) => submitForm(m.payload!.form!.fields, values)}
+              />
+            )}
           </div>
         ))}
         <div ref={endRef} />

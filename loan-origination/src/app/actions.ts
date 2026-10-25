@@ -147,7 +147,7 @@ export async function intakeTurn(
   }
   if (!result) return { ok: false, error: "No access to this loan." };
 
-  const { reply, fields } = result;
+  const { reply, fields, form } = result;
 
   const updates: Record<string, unknown> = {};
   if (fields.borrower_name) updates.borrower_name = fields.borrower_name;
@@ -179,6 +179,7 @@ export async function intakeTurn(
     sender_role: "ai",
     is_internal: false,
     body: reply,
+    payload: form ? { form } : null,
   });
   if (error) return { ok: false, error: error.message };
 

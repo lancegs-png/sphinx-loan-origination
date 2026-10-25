@@ -65,13 +65,66 @@ export function GlobalIntakeEditor({
         <ul className="mb-4 flex flex-col gap-2">
           {fields.length === 0 && <li className="text-sm text-muted">No opening questions yet.</li>}
           {fields.map((f, i) => (
-            <li
-              key={f.key}
-              className="flex items-center justify-between rounded-md border border-line px-3 py-2.5"
-            >
-              <span>{f.label}</span>
-              <span className="flex items-center gap-3">
-                <label className="flex items-center gap-1.5 text-sm text-muted">
+            <li key={f.key} className="rounded-md border border-line px-3 py-2.5">
+              <div className="flex items-center justify-between">
+                <span>{f.label}</span>
+                <button
+                  onClick={() => setFields((arr) => arr.filter((_, idx) => idx !== i))}
+                  className="text-sm text-muted underline"
+                >
+                  remove
+                </button>
+              </div>
+              <div className="mt-2 flex flex-wrap items-center gap-3 text-sm">
+                <label className="flex items-center gap-1.5">
+                  Type
+                  <select
+                    value={f.type ?? "text"}
+                    onChange={(e) =>
+                      setFields((arr) =>
+                        arr.map((x, idx) =>
+                          idx === i
+                            ? {
+                                ...x,
+                                type: e.target.value as QuoteField["type"],
+                                options: e.target.value === "select" ? (x.options ?? []) : undefined,
+                              }
+                            : x,
+                        ),
+                      )
+                    }
+                    className="rounded-md border border-line px-2 py-1"
+                  >
+                    <option value="text">Text</option>
+                    <option value="number">Number</option>
+                    <option value="currency">Currency</option>
+                    <option value="date">Date</option>
+                    <option value="select">Dropdown</option>
+                  </select>
+                </label>
+                {f.type === "select" && (
+                  <input
+                    value={(f.options ?? []).join(", ")}
+                    onChange={(e) =>
+                      setFields((arr) =>
+                        arr.map((x, idx) =>
+                          idx === i
+                            ? {
+                                ...x,
+                                options: e.target.value
+                                  .split(",")
+                                  .map((s) => s.trim())
+                                  .filter(Boolean),
+                              }
+                            : x,
+                        ),
+                      )
+                    }
+                    placeholder="Options, comma-separated"
+                    className="flex-1 rounded-md border border-line px-2 py-1"
+                  />
+                )}
+                <label className="flex items-center gap-1.5 text-muted">
                   <input
                     type="checkbox"
                     checked={f.required ?? false}
@@ -83,13 +136,7 @@ export function GlobalIntakeEditor({
                   />
                   required
                 </label>
-                <button
-                  onClick={() => setFields((arr) => arr.filter((_, idx) => idx !== i))}
-                  className="text-sm text-muted underline"
-                >
-                  remove
-                </button>
-              </span>
+              </div>
             </li>
           ))}
         </ul>

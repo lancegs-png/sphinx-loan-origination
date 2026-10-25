@@ -27,7 +27,20 @@ export type IntakeFields = {
   quote_fields?: Record<string, string | number | boolean>;
 };
 
-export type QuoteField = { key: string; label: string; required?: boolean };
+export type FieldType = "text" | "number" | "currency" | "date" | "select";
+export type QuoteField = {
+  key: string;
+  label: string;
+  required?: boolean;
+  type?: FieldType;
+  options?: string[];
+};
+
+// An inline form the AI asks in the chat (rendered as dropdowns / inputs).
+export type IntakeForm = {
+  intro?: string;
+  fields: { key: string; label: string; type?: FieldType; options?: string[]; required?: boolean }[];
+};
 
 export type ProgramAiConfig = {
   quoteFields: QuoteField[];
@@ -94,6 +107,40 @@ const recordIntakeTool: Anthropic.Tool = {
   },
 };
 
+const askFieldsTool: Anthropic.Tool = {
+  name: "ask_fields",
+  description:
+    "Ask the user for a small group of 2-5 inputs as an inline form in the chat. Use this especially when fields have fixed options (rendered as dropdowns), or to collect a few related values at once. Keep it to 5 fields max. The user can also just answer in free text.",
+  input_schema: {
+    type: "object",
+    additionalProperties: false,
+    required: ["fields"],
+    properties: {
+      intro: { type: "string", description: "One short sentence shown above the form." },
+      fields: {
+        type: "array",
+        maxItems: 5,
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["key", "label"],
+          properties: {
+            key: { type: "string", description: "Field key (use configured keys where they exist)." },
+            label: { type: "string" },
+            type: { type: "string", enum: ["text", "number", "currency", "date", "select"] },
+            options: {
+              type: "array",
+              items: { type: "string" },
+              description: "Required when type is select.",
+            },
+            required: { type: "boolean" },
+          },
+        },
+      },
+    },
+  },
+};
+
 const BASE_SYSTEM = [
   "You are the AI originator for a private loan platform, conducting intake for a NEW loan in a chat.",
   "Guide a natural Who / What / Where / When / Why conversation, one step at a time, keeping replies short and friendly:",
@@ -106,7 +153,14 @@ const BASE_SYSTEM = [
   "Whenever the user gives you a fact, call record_intake with the new field(s). Confirm what you captured in one short line, then ask for the next single missing item.",
   "When you have borrower, loan type, amount, property, and timing, give a brief summary and tell them a team member will follow up with a quote or feedback within 24 hours.",
   "Never invent values. Ask rather than assume.",
+  "Stay conversational. You MAY ask in plain text, but when a field has fixed options (e.g. purchase vs refinance, individual vs entity, loan type) or when a few related values go together, call ask_fields to present a small inline form (2-5 inputs) — put option-bearing fields as type 'select' with their options so they render as dropdowns. Always call record_intake to save the facts you learn, whether from text or a submitted form.",
 ].join("\n");
+
+function fieldHint(f: { type?: FieldType; options?: string[] }): string {
+  if (f.type === "select" && f.options?.length) return ` [select: ${f.options.join(", ")}]`;
+  if (f.type) return ` [${f.type}]`;
+  return "";
+}
 
 /** Builds the full system prompt: base instructions + the GLOBAL intake config
  *  (opening questions, default style/examples) + the per-program layer that applies
@@ -116,7 +170,7 @@ function buildSystem(global: GlobalIntakeConfig, program: ProgramAiConfig): stri
 
   if (global.baseFields.length) {
     const list = global.baseFields
-      .map((f) => `- ${f.label}${f.required ? " [required]" : ""}`)
+      .map((f) => `- ${f.label} (key: ${f.key})${fieldHint(f)}${f.required ? " [required]" : ""}`)
       .join("\n");
     parts.push(
       "Opening questions to cover first, one at a time, before any loan-type-specific questions:\n" +
@@ -126,7 +180,7 @@ function buildSystem(global: GlobalIntakeConfig, program: ProgramAiConfig): stri
 
   if (program.quoteFields.length) {
     const list = program.quoteFields
-      .map((f) => `- ${f.label} (key: ${f.key})${f.required ? " [required for a quote]" : ""}`)
+      .map((f) => `- ${f.label} (key: ${f.key})${fieldHint(f)}${f.required ? " [required for a quote]" : ""}`)
       .join("\n");
     parts.push(
       "Once the loan type is known, also gather these inputs for an initial quote and record them in the record_intake tool's quote_fields object (use the given keys):\n" +
@@ -173,7 +227,7 @@ export async function runIntakeTurn(opts: {
   loanId: string;
   global: GlobalIntakeConfig;
   program: ProgramAiConfig;
-}): Promise<{ reply: string; fields: IntakeFields } | null> {
+}): Promise<{ reply: string; fields: IntakeFields; form?: IntakeForm } | null> {
   const { supabase, loanId, global, program } = opts;
 
   const { data: loan } = await supabase
@@ -214,6 +268,7 @@ export async function runIntakeTurn(opts: {
   const system = buildSystem(global, program);
   const messages: Anthropic.MessageParam[] = [{ role: "user", content: userPrompt }];
   const fields: IntakeFields = {};
+  let form: IntakeForm | undefined;
   let reply = "";
 
   // Up to two passes: first may call the tool (extraction); the follow-up produces the reply.
@@ -222,7 +277,7 @@ export async function runIntakeTurn(opts: {
       model: MODEL,
       max_tokens: 1024,
       system,
-      tools: [recordIntakeTool],
+      tools: [recordIntakeTool, askFieldsTool],
       messages,
     });
 
@@ -239,10 +294,14 @@ export async function runIntakeTurn(opts: {
 
     if (resp.stop_reason === "tool_use" && toolUses.length) {
       for (const tu of toolUses) {
-        const inp = tu.input as IntakeFields;
-        const mergedQuote = { ...(fields.quote_fields ?? {}), ...(inp.quote_fields ?? {}) };
-        Object.assign(fields, inp);
-        if (Object.keys(mergedQuote).length) fields.quote_fields = mergedQuote;
+        if (tu.name === "record_intake") {
+          const inp = tu.input as IntakeFields;
+          const mergedQuote = { ...(fields.quote_fields ?? {}), ...(inp.quote_fields ?? {}) };
+          Object.assign(fields, inp);
+          if (Object.keys(mergedQuote).length) fields.quote_fields = mergedQuote;
+        } else if (tu.name === "ask_fields") {
+          form = tu.input as IntakeForm;
+        }
       }
       messages.push({ role: "assistant", content: resp.content });
       messages.push({
@@ -250,7 +309,7 @@ export async function runIntakeTurn(opts: {
         content: toolUses.map((tu) => ({
           type: "tool_result" as const,
           tool_use_id: tu.id,
-          content: "Recorded.",
+          content: tu.name === "ask_fields" ? "Form shown to the user." : "Recorded.",
         })),
       });
       continue; // loop again to get the natural-language reply
@@ -258,7 +317,7 @@ export async function runIntakeTurn(opts: {
     break;
   }
 
-  return { reply: reply || "Got it — thanks.", fields };
+  return { reply: reply || (form?.intro ?? "Got it — thanks."), fields, form };
 }
 
 function capturedSummary(loan: LoanRecord): string {
