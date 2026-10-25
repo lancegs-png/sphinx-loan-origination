@@ -217,6 +217,109 @@ export async function saveGlobalIntakeConfig(input: {
   return { ok: true };
 }
 
+// ---------- Admin backend: document types, checklists, pricing, users ----------
+
+export async function saveDocumentType(input: {
+  id?: string;
+  key: string;
+  name: string;
+  defaultNaming: string;
+  defaultReviewRules: string;
+}): Promise<{ ok: boolean; error?: string }> {
+  const supabase = await createClient();
+  const row = {
+    key: input.key.trim() || input.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_"),
+    name: input.name.trim(),
+    default_naming_convention: input.defaultNaming.trim() || null,
+    default_review_rules: input.defaultReviewRules.trim() || null,
+  };
+  const { error } = input.id
+    ? await supabase.from("document_types").update(row).eq("id", input.id)
+    : await supabase.from("document_types").insert(row);
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
+}
+
+export async function deleteDocumentType(id: string): Promise<{ ok: boolean; error?: string }> {
+  const supabase = await createClient();
+  const { error } = await supabase.from("document_types").delete().eq("id", id);
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
+}
+
+export async function setUserRole(input: {
+  userId: string;
+  isLendingTeam: boolean;
+  lenderUserType: "admin" | "operations" | "account_manager" | null;
+}): Promise<{ ok: boolean; error?: string }> {
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("profiles")
+    .update({
+      is_lending_team: input.isLendingTeam,
+      lender_user_type: input.isLendingTeam ? input.lenderUserType : null,
+    })
+    .eq("id", input.userId);
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
+}
+
+export type ChecklistItemInput = {
+  documentTypeId: string;
+  required: boolean;
+  assignee: "borrower" | "lending_team";
+  namingOverride: string;
+  reviewRulesOverride: string;
+};
+
+export async function saveProgramChecklist(
+  programId: string,
+  items: ChecklistItemInput[],
+): Promise<{ ok: boolean; error?: string }> {
+  const supabase = await createClient();
+  const { error: delErr } = await supabase
+    .from("program_checklist_items")
+    .delete()
+    .eq("program_id", programId);
+  if (delErr) return { ok: false, error: delErr.message };
+
+  if (items.length) {
+    const rows = items.map((it, i) => ({
+      program_id: programId,
+      document_type_id: it.documentTypeId,
+      required: it.required,
+      assignee: it.assignee,
+      naming_override: it.namingOverride.trim() || null,
+      review_rules_override: it.reviewRulesOverride.trim() || null,
+      sort: i,
+    }));
+    const { error } = await supabase.from("program_checklist_items").insert(rows);
+    if (error) return { ok: false, error: error.message };
+  }
+  return { ok: true };
+}
+
+export async function saveProgramPricing(input: {
+  programId: string;
+  mode: "model" | "guidelines";
+  guidelines: string;
+  model: Record<string, unknown>;
+}): Promise<{ ok: boolean; error?: string }> {
+  const supabase = await createClient();
+  const { error } = await supabase.from("program_pricing").upsert(
+    {
+      program_id: input.programId,
+      mode: input.mode,
+      guidelines: input.guidelines.trim() || null,
+      model: input.model,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "program_id" },
+  );
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
+}
+
 /**
  * Admin: save a loan program's AI intake config (M3) — quote fields, style, examples.
  * RLS (program_ai_config_write) restricts this to Admin users.

@@ -67,6 +67,16 @@ export function ProgramConfigEditor({
         </Link>
       </header>
 
+      <nav className="mb-8 flex gap-4 text-sm">
+        <span className="font-medium">AI Intake</span>
+        <Link href={`/admin/programs/${programId}/checklist`} className="text-muted underline">
+          Checklist
+        </Link>
+        <Link href={`/admin/programs/${programId}/pricing`} className="text-muted underline">
+          Pricing
+        </Link>
+      </nav>
+
       {/* Quote fields */}
       <section className="mb-10">
         <h2 className="mb-1 text-lg font-semibold">Quote inputs</h2>

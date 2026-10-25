@@ -26,13 +26,24 @@ export default async function AdminHome() {
         </Link>
       </header>
 
-      <Link
-        href="/admin/intake"
-        className="mb-6 flex items-center justify-between rounded-md border border-line px-4 py-4 hover:bg-black/[0.02]"
-      >
-        <span className="font-medium">Global Intake</span>
-        <span className="text-muted">Opening questions, style, examples →</span>
-      </Link>
+      <h2 className="mb-3 text-sm font-medium text-muted">Library &amp; settings</h2>
+      <ul className="mb-8 flex flex-col gap-3">
+        {[
+          { href: "/admin/intake", label: "Global Intake", hint: "Opening questions, style, examples" },
+          { href: "/admin/document-types", label: "Document Types", hint: "Shared library for checklists" },
+          { href: "/admin/users", label: "Users & Roles", hint: "Lending team membership and roles" },
+        ].map((l) => (
+          <li key={l.href}>
+            <Link
+              href={l.href}
+              className="flex items-center justify-between rounded-md border border-line px-4 py-4 hover:bg-black/[0.02]"
+            >
+              <span className="font-medium">{l.label}</span>
+              <span className="text-muted">{l.hint} →</span>
+            </Link>
+          </li>
+        ))}
+      </ul>
 
       <h2 className="mb-3 text-sm font-medium text-muted">Loan programs</h2>
       <ul className="flex flex-col gap-3">
