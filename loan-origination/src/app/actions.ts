@@ -6,8 +6,10 @@ import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { answerLoanQuestion } from "@/lib/ai/record-keeper";
 import {
   runIntakeTurn,
+  detectLoanTypeKey,
   PROGRAM_LABEL,
   type ProgramAiConfig,
+  type GlobalIntakeConfig,
   type QuoteField,
 } from "@/lib/ai/intake";
 
@@ -65,7 +67,10 @@ export async function addLoan() {
  * replies with the next question. Field writes go through the service role after
  * the user-scoped retrieval confirms access; the reply is a shared AI message.
  */
-export async function intakeTurn(loanId: string): Promise<{ ok: boolean; error?: string }> {
+export async function intakeTurn(
+  loanId: string,
+  userText: string,
+): Promise<{ ok: boolean; error?: string }> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -82,17 +87,51 @@ export async function intakeTurn(loanId: string): Promise<{ ok: boolean; error?:
 
   const admin = createServiceRoleClient();
 
-  // Load the program's admin-configured AI intake config (quote fields, style, examples).
-  // Read via service role — it's global config, not loan data (design §5.2).
-  let config: ProgramAiConfig = { quoteFields: [], style: null, examples: null };
-  if (loan.program_id) {
+  // Global intake config (applies before a program is known). Read via service role —
+  // it's org config, not loan data (design §5.2).
+  let global: GlobalIntakeConfig = { baseFields: [], style: null, examples: null };
+  {
+    const { data: row } = await admin
+      .from("app_settings")
+      .select("value")
+      .eq("key", "intake_global")
+      .single();
+    const v = (row?.value ?? {}) as {
+      base_fields?: QuoteField[];
+      style?: string | null;
+      examples?: string | null;
+    };
+    global = {
+      baseFields: Array.isArray(v.base_fields) ? v.base_fields : [],
+      style: v.style ?? null,
+      examples: v.examples ?? null,
+    };
+  }
+
+  // Resolve the effective program: the one already set, else detect the loan type from
+  // this turn's text so the program layer applies in the SAME turn (no one-turn lag).
+  let effectiveProgramId: string | null = loan.program_id ?? null;
+  if (!effectiveProgramId) {
+    const key = detectLoanTypeKey(userText);
+    if (key) {
+      const { data: prog } = await supabase
+        .from("loan_programs")
+        .select("id")
+        .eq("loan_type_key", key)
+        .single();
+      if (prog) effectiveProgramId = prog.id;
+    }
+  }
+
+  let program: ProgramAiConfig = { quoteFields: [], style: null, examples: null };
+  if (effectiveProgramId) {
     const { data: cfg } = await admin
       .from("program_ai_config")
       .select("quote_fields,intake_style,intake_examples")
-      .eq("program_id", loan.program_id)
+      .eq("program_id", effectiveProgramId)
       .single();
     if (cfg) {
-      config = {
+      program = {
         quoteFields: Array.isArray(cfg.quote_fields) ? cfg.quote_fields : [],
         style: cfg.intake_style,
         examples: cfg.intake_examples,
@@ -102,7 +141,7 @@ export async function intakeTurn(loanId: string): Promise<{ ok: boolean; error?:
 
   let result: Awaited<ReturnType<typeof runIntakeTurn>>;
   try {
-    result = await runIntakeTurn({ supabase, loanId, config });
+    result = await runIntakeTurn({ supabase, loanId, global, program });
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "Intake failed." };
   }
@@ -143,6 +182,37 @@ export async function intakeTurn(loanId: string): Promise<{ ok: boolean; error?:
   });
   if (error) return { ok: false, error: error.message };
 
+  return { ok: true };
+}
+
+/**
+ * Admin: save the GLOBAL intake config — base/opening questions, default style,
+ * default examples. Applies before a loan program is known. RLS restricts to Admin.
+ */
+export async function saveGlobalIntakeConfig(input: {
+  baseFields: QuoteField[];
+  style: string;
+  examples: string;
+}): Promise<{ ok: boolean; error?: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+
+  const { error } = await supabase.from("app_settings").upsert(
+    {
+      key: "intake_global",
+      value: {
+        base_fields: input.baseFields,
+        style: input.style.trim() || null,
+        examples: input.examples.trim() || null,
+      },
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "key" },
+  );
+  if (error) return { ok: false, error: error.message };
   return { ok: true };
 }
 

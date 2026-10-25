@@ -35,6 +35,27 @@ export type ProgramAiConfig = {
   examples?: string | null;
 };
 
+// Global intake config (applies before a loan program is known).
+export type GlobalIntakeConfig = {
+  baseFields: QuoteField[];
+  style?: string | null;
+  examples?: string | null;
+};
+
+/** Heuristic: guess the loan program key from the user's text so program-specific
+ *  questions can apply in the SAME turn the loan type is mentioned (no one-turn lag).
+ *  A miss just means the program layer applies on the next turn. */
+export function detectLoanTypeKey(text: string): IntakeFields["loan_type_key"] | null {
+  const t = text.toLowerCase();
+  if (/commercial.*(permanent|perm)/.test(t)) return "commercial_permanent";
+  if (/commercial.*bridge/.test(t)) return "commercial_bridge";
+  if (/\bdscr\b|rental/.test(t)) return "dscr";
+  if (/fix.{0,4}(and|&|n).{0,4}flip|\bflip\b/.test(t)) return "fix_and_flip";
+  if (/new construction|ground.?up|\bconstruction\b/.test(t)) return "new_construction";
+  if (/\bbridge\b/.test(t)) return "bridge";
+  return null;
+}
+
 const recordIntakeTool: Anthropic.Tool = {
   name: "record_intake",
   description:
@@ -87,30 +108,38 @@ const BASE_SYSTEM = [
   "Never invent values. Ask rather than assume.",
 ].join("\n");
 
-/** Builds the full system prompt from the base instructions plus admin-configured
- *  per-program style, example conversations, and quote fields (M3). */
-function buildSystem(config: ProgramAiConfig): string {
+/** Builds the full system prompt: base instructions + the GLOBAL intake config
+ *  (opening questions, default style/examples) + the per-program layer that applies
+ *  conditionally once the loan type is known (quote fields; style/examples override). */
+function buildSystem(global: GlobalIntakeConfig, program: ProgramAiConfig): string {
   const parts = [BASE_SYSTEM];
 
-  if (config.quoteFields.length) {
-    const list = config.quoteFields
-      .map((f) => `- ${f.label} (key: ${f.key})${f.required ? " [required for a quote]" : ""}`)
+  if (global.baseFields.length) {
+    const list = global.baseFields
+      .map((f) => `- ${f.label}${f.required ? " [required]" : ""}`)
       .join("\n");
     parts.push(
-      [
-        "For an initial quote on THIS loan program, also gather these inputs and record them in the record_intake tool's quote_fields object (use the given keys):",
+      "Opening questions to cover first, one at a time, before any loan-type-specific questions:\n" +
         list,
-      ].join("\n"),
     );
   }
 
-  if (config.style && config.style.trim()) {
-    parts.push("CONVERSATION STYLE (follow this voice and these guardrails):\n" + config.style.trim());
+  if (program.quoteFields.length) {
+    const list = program.quoteFields
+      .map((f) => `- ${f.label} (key: ${f.key})${f.required ? " [required for a quote]" : ""}`)
+      .join("\n");
+    parts.push(
+      "Once the loan type is known, also gather these inputs for an initial quote and record them in the record_intake tool's quote_fields object (use the given keys):\n" +
+        list,
+    );
   }
 
-  if (config.examples && config.examples.trim()) {
-    parts.push("EXAMPLE CONVERSATIONS (mirror this phrasing and flow):\n" + config.examples.trim());
-  }
+  // Program style/examples override the global defaults when present.
+  const style = program.style?.trim() || global.style?.trim();
+  if (style) parts.push("CONVERSATION STYLE (follow this voice and these guardrails):\n" + style);
+
+  const examples = program.examples?.trim() || global.examples?.trim();
+  if (examples) parts.push("EXAMPLE CONVERSATIONS (mirror this phrasing and flow):\n" + examples);
 
   return parts.join("\n\n");
 }
@@ -142,9 +171,10 @@ type LoanRecord = {
 export async function runIntakeTurn(opts: {
   supabase: SupabaseClient;
   loanId: string;
-  config: ProgramAiConfig;
+  global: GlobalIntakeConfig;
+  program: ProgramAiConfig;
 }): Promise<{ reply: string; fields: IntakeFields } | null> {
-  const { supabase, loanId, config } = opts;
+  const { supabase, loanId, global, program } = opts;
 
   const { data: loan } = await supabase
     .from("loans")
@@ -181,7 +211,7 @@ export async function runIntakeTurn(opts: {
 
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-  const system = buildSystem(config);
+  const system = buildSystem(global, program);
   const messages: Anthropic.MessageParam[] = [{ role: "user", content: userPrompt }];
   const fields: IntakeFields = {};
   let reply = "";

@@ -102,7 +102,7 @@ export function Chat({
     if (intakeMode) {
       setAiError(null);
       setAiBusy(true);
-      const res = await intakeTurn(loanId);
+      const res = await intakeTurn(loanId, text);
       setAiBusy(false);
       if (!res.ok) setAiError(res.error ?? "Intake couldn’t continue.");
     }

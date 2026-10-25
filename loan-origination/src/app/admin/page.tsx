@@ -26,6 +26,15 @@ export default async function AdminHome() {
         </Link>
       </header>
 
+      <Link
+        href="/admin/intake"
+        className="mb-6 flex items-center justify-between rounded-md border border-line px-4 py-4 hover:bg-black/[0.02]"
+      >
+        <span className="font-medium">Global Intake</span>
+        <span className="text-muted">Opening questions, style, examples →</span>
+      </Link>
+
+      <h2 className="mb-3 text-sm font-medium text-muted">Loan programs</h2>
       <ul className="flex flex-col gap-3">
         {(programs ?? []).map((p: { id: string; name: string }) => (
           <li key={p.id}>
