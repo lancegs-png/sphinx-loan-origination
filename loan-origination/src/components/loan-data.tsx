@@ -57,8 +57,8 @@ export function LoanData({
     return v == null ? "" : String(v);
   }
 
-  async function save(key: string, section: string, value: string, label: string) {
-    const res = await saveLoanField({ loanId: loan.id, key, section, value });
+  async function save(key: string, section: string, type: string, value: string, label: string) {
+    const res = await saveLoanField({ loanId: loan.id, key, section, type, value });
     setStatus(res.ok ? `Saved ${label}` : res.error ?? "Save failed");
   }
 
@@ -90,7 +90,7 @@ export function LoanData({
                   options={def.options}
                   initial={valueFor(def)}
                   readOnly={!canEdit || def.key === "loan_number"}
-                  onSave={(v) => save(def.key, def.section, v, def.label)}
+                  onSave={(v) => save(def.key, def.section, def.type, v, def.label)}
                 />
               ))}
               {extra.map((k) => (
@@ -101,7 +101,7 @@ export function LoanData({
                   options={[]}
                   initial={customFields[k] == null ? "" : String(customFields[k])}
                   readOnly={!canEdit}
-                  onSave={(v) => save(k, "other", v, prettyKey(k))}
+                  onSave={(v) => save(k, "other", "text", v, prettyKey(k))}
                 />
               ))}
             </div>

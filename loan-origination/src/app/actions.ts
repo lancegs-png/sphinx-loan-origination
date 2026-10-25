@@ -228,10 +228,40 @@ const CORE_COLUMNS: Record<string, string> = {
   expected_close_date: "expected_close_date",
 };
 
+// Title-case names/addresses while preserving business suffixes, state codes, etc.
+const KEEP_UPPER = new Set([
+  "LLC", "L.L.C.", "INC", "INC.", "LP", "LLP", "PLLC", "DBA", "PO", "US", "USA", "LTD", "CORP",
+]);
+const US_STATES = new Set([
+  "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "HI", "ID", "IL", "IN", "IA", "KS",
+  "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ", "NM", "NY",
+  "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV",
+  "WI", "WY", "DC",
+]);
+// Text fields kept verbatim (acronyms / IDs), never title-cased.
+const SKIP_NORMALIZE = new Set(["loan_type", "entity_ein", "servicer_id", "package_tracking"]);
+
+function titleCaseWord(w: string): string {
+  const up = w.toUpperCase();
+  if (KEEP_UPPER.has(up)) return up;
+  if (w.length === 2 && US_STATES.has(up)) return up;
+  return w.replace(/[A-Za-z]+/g, (s) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase());
+}
+
+function normalizeFieldValue(key: string, type: string, value: string): string {
+  if (type !== "text") return value;
+  const t = value.trim();
+  if (!t) return t;
+  if (key.includes("email")) return t.toLowerCase();
+  if (SKIP_NORMALIZE.has(key)) return t;
+  return t.split(/(\s+)/).map((tok) => (/\s+/.test(tok) ? tok : titleCaseWord(tok))).join("");
+}
+
 export async function saveLoanField(input: {
   loanId: string;
   key: string;
   section: string;
+  type: string;
   value: string;
 }): Promise<{ ok: boolean; error?: string }> {
   const supabase = await createClient();
@@ -242,7 +272,7 @@ export async function saveLoanField(input: {
     .single();
   if (!loan) return { ok: false, error: "No access to this loan." };
 
-  const raw = input.value;
+  const raw = normalizeFieldValue(input.key, input.type, input.value);
 
   if (input.key in CORE_COLUMNS) {
     const col = CORE_COLUMNS[input.key];
