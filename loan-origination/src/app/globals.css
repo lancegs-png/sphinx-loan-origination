@@ -1,0 +1,48 @@
+@import "tailwindcss";
+
+/* v1 visual principles (design §12.1): light, monochrome, color only for meaning. */
+:root {
+  --bg: #ffffff;
+  --fg: #141414;
+  --muted: #6b6b6b;
+  --line: #e6e6e6;
+  --accent: #1a56ff;              /* single bright accent for the current stage */
+  --status-outstanding: #dc2626;  /* red */
+  --status-update: #d9a300;       /* yellow */
+  --status-approved: #15a34a;     /* green */
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-accent: var(--accent);
+}
+
+html {
+  font-size: 17px;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Status pills — always paired with a text label (accessibility, §12.1). */
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+}
+.status-outstanding { color: var(--status-outstanding); }
+.status-update { color: var(--status-update); }
+.status-approved { color: var(--status-approved); }
