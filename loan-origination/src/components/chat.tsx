@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { askAi } from "@/app/actions";
 import type { Message } from "@/lib/types";
 
 function roleLabel(m: Message): string {
@@ -37,6 +38,8 @@ export function Chat({
   const [body, setBody] = useState("");
   const [internal, setInternal] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -64,11 +67,7 @@ export function Chat({
     };
   }, [loanId, isLender, supabase]);
 
-  async function send(e: React.FormEvent) {
-    e.preventDefault();
-    const text = body.trim();
-    if (!text) return;
-    setBusy(true);
+  async function insertHuman(text: string, markInternal: boolean): Promise<boolean> {
     const { data, error } = await supabase
       .from("messages")
       .insert({
@@ -76,17 +75,41 @@ export function Chat({
         sender_user_id: currentUserId,
         sender_kind: "human",
         sender_role: currentRole,
-        is_internal: isLender ? internal : false,
+        is_internal: isLender ? markInternal : false,
         body: text,
       })
       .select("*")
       .single();
+    if (error || !data) return false;
+    const m = data as Message;
+    setMessages((prev) => (prev.some((p) => p.id === m.id) ? prev : [...prev, m]));
+    return true;
+  }
+
+  async function send(e: React.FormEvent) {
+    e.preventDefault();
+    const text = body.trim();
+    if (!text) return;
+    setBusy(true);
+    const ok = await insertHuman(text, internal);
     setBusy(false);
-    if (!error && data) {
-      const m = data as Message;
-      setMessages((prev) => (prev.some((p) => p.id === m.id) ? prev : [...prev, m]));
-      setBody("");
-    }
+    if (ok) setBody("");
+  }
+
+  async function ask() {
+    const text = body.trim();
+    if (!text) return;
+    setAiError(null);
+    // A lender's AI exchange is team-only (the answer may reference internal data);
+    // a borrower's/originator's stays shared. The server marks the AI reply to match.
+    const ok = await insertHuman(text, isLender);
+    if (!ok) return;
+    setBody("");
+    setAiBusy(true);
+    const res = await askAi(loanId, text);
+    setAiBusy(false);
+    if (!res.ok) setAiError(res.error ?? "The AI couldn't answer.");
+    // The AI reply arrives via realtime.
   }
 
   return (
@@ -108,6 +131,12 @@ export function Chat({
       </div>
 
       <form onSubmit={send} className="border-t border-line px-6 py-4">
+        {aiBusy && <p className="mb-2 text-sm text-muted">AI record keeper is thinking…</p>}
+        {aiError && (
+          <p className="mb-2 text-sm" style={{ color: "var(--status-outstanding)" }}>
+            {aiError}
+          </p>
+        )}
         {isLender && (
           <label className="mb-2 flex items-center gap-2 text-sm text-muted">
             <input
@@ -126,9 +155,17 @@ export function Chat({
               if (e.key === "Enter" && !e.shiftKey) send(e);
             }}
             rows={2}
-            placeholder="Type a message…"
+            placeholder="Message the team, or ask the AI…"
             className="min-h-11 flex-1 resize-none rounded-md border border-line px-3 py-2.5 text-base"
           />
+          <button
+            type="button"
+            onClick={ask}
+            disabled={aiBusy || busy}
+            className="rounded-md border border-line px-4 py-2.5 font-medium disabled:opacity-50"
+          >
+            Ask AI
+          </button>
           <button
             type="submit"
             disabled={busy}
