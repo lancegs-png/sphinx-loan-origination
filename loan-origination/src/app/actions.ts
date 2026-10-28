@@ -217,6 +217,77 @@ export async function saveGlobalIntakeConfig(input: {
   return { ok: true };
 }
 
+// ---------- M4: DSCR quoting ----------
+import { priceLoan, type PricingConfig, type QuoteInput, type QuoteResult } from "@/lib/pricing/engine";
+
+export async function quoteLoan(
+  loanId: string,
+  input: QuoteInput,
+): Promise<{ ok: boolean; result?: QuoteResult; error?: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("is_lending_team")
+    .eq("id", user.id)
+    .single();
+  if (!profile?.is_lending_team) return { ok: false, error: "Lending team only." };
+
+  const { data: loan } = await supabase.from("loans").select("program_id").eq("id", loanId).single();
+  if (!loan?.program_id) return { ok: false, error: "No loan program set on this loan." };
+
+  const admin = createServiceRoleClient();
+  const { data: pricing } = await admin
+    .from("program_pricing")
+    .select("model")
+    .eq("program_id", loan.program_id)
+    .single();
+  const engine = (pricing?.model as { engine?: PricingConfig } | null)?.engine;
+  if (!engine) {
+    return { ok: false, error: "This program has no parsed pricing engine yet." };
+  }
+
+  try {
+    return { ok: true, result: priceLoan(engine, input) };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Pricing failed." };
+  }
+}
+
+export async function postQuoteToChat(
+  loanId: string,
+  summary: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("is_lending_team")
+    .eq("id", user.id)
+    .single();
+  if (!profile?.is_lending_team) return { ok: false, error: "Lending team only." };
+
+  const { data: loan } = await supabase.from("loans").select("id").eq("id", loanId).single();
+  if (!loan) return { ok: false, error: "No access to this loan." };
+
+  const admin = createServiceRoleClient();
+  const { error } = await admin.from("messages").insert({
+    loan_id: loanId,
+    sender_kind: "ai",
+    sender_role: "ai",
+    is_internal: false,
+    body: summary,
+  });
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
+}
+
 // ---------- Loan Data view: edit a single field, routed by its section ----------
 
 // Fields that live in typed columns on loans (used by pipeline/top bar).

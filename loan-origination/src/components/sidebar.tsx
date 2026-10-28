@@ -2,9 +2,10 @@
 
 import { useState } from "react";
 import { LoanData } from "./loan-data";
+import { QuotePanel } from "./quote-panel";
 import type { FieldDef, InternalNote, Loan, Participant } from "@/lib/types";
 
-type Tab = "people" | "documents" | "loan" | "notes";
+type Tab = "people" | "documents" | "loan" | "quote" | "notes";
 
 function participantRoleLabel(role: string) {
   if (role === "lending_team") return "Lending team";
@@ -34,6 +35,7 @@ export function Sidebar({
     { key: "people", label: "People" },
     { key: "documents", label: "Documents" },
     { key: "loan", label: "Loan Info" },
+    { key: "quote", label: "Quote", lenderOnly: true },
     { key: "notes", label: "Internal Notes", lenderOnly: true },
   ];
 
@@ -72,6 +74,10 @@ export function Sidebar({
         )}
 
         {tab === "documents" && <p className="text-muted">No documents yet.</p>}
+
+        {tab === "quote" && isLender && (
+          <QuotePanel loan={loan} customFields={(loan.custom_fields as Record<string, unknown>) ?? {}} />
+        )}
 
         {tab === "loan" && (
           <LoanData
