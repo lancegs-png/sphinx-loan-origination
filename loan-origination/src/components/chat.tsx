@@ -183,6 +183,22 @@ export function Chat({
               <span>{new Date(m.created_at).toLocaleString()}</span>
             </div>
             <p className="whitespace-pre-wrap">{m.body}</p>
+            {m.payload?.doc && (
+              <a
+                href={m.payload.doc.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-2 inline-flex max-w-full items-center gap-3 rounded-md border border-line px-3 py-2.5 hover:bg-black/5"
+              >
+                <span aria-hidden className="text-xl leading-none">
+                  📄
+                </span>
+                <span className="flex min-w-0 flex-col">
+                  <span className="truncate font-medium">{m.payload.doc.title}</span>
+                  <span className="text-xs text-muted">PDF · click to open in a new tab</span>
+                </span>
+              </a>
+            )}
             {m.payload?.form && intakeMode && idx === messages.length - 1 && (
               <IntakeFormCard
                 form={m.payload.form}

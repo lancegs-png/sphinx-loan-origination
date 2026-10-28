@@ -1,0 +1,113 @@
+import { createClient } from "@/lib/supabase/server";
+import { renderTermSheetPdf, type TermSheetData } from "@/lib/term-sheet/document";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+const PROP_TYPE: Record<string, string> = {
+  sfr: "Single Family Residence",
+  "2-4": "2-4 Unit",
+  condo: "Condominium",
+  nw_condo: "Non-Warrantable Condo",
+  str: "Short-Term Rental",
+};
+const PREPAY: Record<string, string> = {
+  "5yr": "5 Year Stepdown (5,4,3,2,1%)",
+  "4yr": "4 Year Stepdown (4,3,2,1%)",
+  "3yr": "3 Year Stepdown (3,2,1%)",
+  "2yr": "2 Year Stepdown (2,1%)",
+  "1yr": "1 Year (1%)",
+  none: "None",
+};
+const PURPOSE: Record<string, string> = {
+  purchase: "Purchase",
+  rt: "Rate/Term Refinance",
+  co: "Cash-Out Refinance",
+};
+
+const toNum = (v: unknown): number | null => {
+  if (v == null || v === "") return null;
+  const n = typeof v === "number" ? v : parseFloat(String(v).replace(/[^0-9.-]/g, ""));
+  return Number.isFinite(n) ? n : null;
+};
+
+function monthlyPI(principal: number | null, ratePct: number | null): number | null {
+  if (!principal || !ratePct) return null;
+  const r = ratePct / 100 / 12;
+  const n = 360;
+  return (principal * r) / (1 - Math.pow(1 + r, -n));
+}
+
+function label(map: Record<string, string>, raw: unknown, fallback = "—"): string {
+  const s = String(raw ?? "").trim();
+  if (!s) return fallback;
+  return map[s.toLowerCase()] ?? s;
+}
+
+export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return new Response("Unauthorized", { status: 401 });
+
+  // RLS: a non-participant gets no row -> treat as not found.
+  const { data: loan } = await supabase
+    .from("loans")
+    .select("loan_number,property_address,borrower_name,loan_amount,custom_fields")
+    .eq("id", id)
+    .single();
+  if (!loan) return new Response("Not found", { status: 404 });
+
+  const cf = (loan.custom_fields ?? {}) as Record<string, unknown>;
+  const q = (cf.quote ?? {}) as Record<string, unknown>;
+  const sig = cf.term_sheet as { signed_by?: string; signed_at?: string } | undefined;
+
+  const loanAmount = toNum(q.loan_amount) ?? loan.loan_amount ?? null;
+  const rateNum = toNum(q.rate);
+  const guarantor =
+    [cf.guarantor_first_name, cf.guarantor_last_name].filter(Boolean).join(" ") ||
+    loan.borrower_name ||
+    "—";
+  const firstName =
+    (cf.guarantor_first_name as string) ||
+    (loan.borrower_name ? loan.borrower_name.split(" ")[0] : "") ||
+    "there";
+
+  const data: TermSheetData = {
+    date: new Date().toLocaleDateString("en-US"),
+    greetingName: firstName,
+    loanAmount: loanAmount ?? 0,
+    fico: toNum(cf.guarantor_credit),
+    interestRate: rateNum != null ? `${rateNum}%` : "—",
+    propertyValue: toNum(cf.as_is_value) ?? toNum(cf.property_value),
+    loanProgram: "BPL Term",
+    ltv: q.ltv != null ? `${q.ltv}%` : "—",
+    propertyType: label(PROP_TYPE, cf.property_type),
+    prepay: label(PREPAY, q.prepay),
+    loanTermMonths: 360,
+    dscr: q.dscr != null ? String(q.dscr) : "—",
+    loanPurpose: label(PURPOSE, cf.loan_purpose),
+    loanType: "30 Year Fixed",
+    entity: (cf.entity_name as string) || loan.borrower_name || "—",
+    guarantor,
+    monthlyPI: monthlyPI(loanAmount, rateNum),
+    originationPct: q.origination_pct != null ? toNum(q.origination_pct)!.toFixed(2) : "1.00",
+    propertyAddress: loan.property_address ?? "—",
+    signature:
+      sig?.signed_by && sig.signed_at
+        ? { name: sig.signed_by, dateStr: new Date(sig.signed_at).toLocaleDateString("en-US") }
+        : null,
+  };
+
+  const pdf = await renderTermSheetPdf(data);
+  const filename = `Term Sheet - ${loan.loan_number}${data.signature ? " (signed)" : ""}.pdf`;
+  return new Response(Buffer.from(pdf), {
+    headers: {
+      "Content-Type": "application/pdf",
+      "Content-Disposition": `inline; filename="${filename}"`,
+      "Cache-Control": "no-store",
+    },
+  });
+}

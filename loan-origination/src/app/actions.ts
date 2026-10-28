@@ -300,8 +300,9 @@ export async function postQuoteToChat(
   return { ok: true };
 }
 
-/** Borrower accepted the quote — generate an LOI-style term sheet from the stored
- *  quote terms + loan data and post it to chat with a Sign control. */
+/** Borrower accepted the quote — generate an LOI / term-sheet PDF (served from
+ *  /api/loans/[id]/term-sheet) and post it to chat as a clickable document with
+ *  an inline Sign control. */
 export async function generateTermSheet(loanId: string): Promise<{ ok: boolean; error?: string }> {
   const supabase = await createClient();
   const {
@@ -311,44 +312,17 @@ export async function generateTermSheet(loanId: string): Promise<{ ok: boolean; 
 
   const { data: loan } = await supabase
     .from("loans")
-    .select("loan_number,property_address,borrower_name,custom_fields")
+    .select("loan_number,custom_fields")
     .eq("id", loanId)
     .single();
   if (!loan) return { ok: false, error: "No access to this loan." };
 
   const cf = (loan.custom_fields as Record<string, unknown>) ?? {};
-  const q = cf.quote as Record<string, unknown> | undefined;
-  if (!q) return { ok: false, error: "There's no quote on file to turn into a term sheet yet." };
+  if (!cf.quote) return { ok: false, error: "There's no quote on file to turn into a term sheet yet." };
 
-  const n = (v: unknown) => Number(v ?? 0).toLocaleString();
-  const borrower = (cf.entity_name as string) || loan.borrower_name || "Borrower";
-  const guarantor =
-    [cf.guarantor_first_name, cf.guarantor_last_name].filter(Boolean).join(" ") || "—";
-
-  const ts = [
-    "TERM SHEET — Sphinx Capital",
-    `Date: ${new Date().toLocaleDateString()}`,
-    "",
-    `Borrower: ${borrower}`,
-    `Guarantor: ${guarantor}`,
-    `Property: ${loan.property_address ?? "—"}`,
-    "",
-    "GENERAL TERMS",
-    `• Loan Amount: $${n(q.loan_amount)}`,
-    "• Loan Term: 30-year (DSCR)",
-    `• Prepayment: ${q.prepay ?? "—"}`,
-    "• Amortization: Fully Amortized",
-    "",
-    "FINANCIAL TERMS",
-    `• Interest Rate: ${q.rate}%`,
-    `• Origination Fee: ${q.origination_pct}% ($${n(q.origination_amount)})`,
-    `• Estimated Monthly Payment (PITIA): $${n(q.pitia)}`,
-    `• LTV: ${q.ltv}% · DSCR: ${q.dscr}`,
-    "",
-    "These are preliminary terms, subject to underwriting review, the due-diligence items on your checklist, and final credit approval. All loans are business-purpose, non-owner-occupied, require a personal guarantor, and require ACH payments.",
-    "",
-    "By signing below, you accept these preliminary terms and your intent to proceed.",
-  ].join("\n");
+  const body =
+    "Here is your Letter of Intent / term sheet based on the quoted terms. Please open and review it, " +
+    "then sign below to accept and begin the process. Final terms remain subject to underwriting and approval.";
 
   const admin = createServiceRoleClient();
   const { error } = await admin.from("messages").insert({
@@ -356,8 +330,11 @@ export async function generateTermSheet(loanId: string): Promise<{ ok: boolean; 
     sender_kind: "ai",
     sender_role: "ai",
     is_internal: false,
-    body: ts,
-    payload: { sign: true },
+    body,
+    payload: {
+      sign: true,
+      doc: { title: `Letter of Intent — ${loan.loan_number}.pdf`, url: `/api/loans/${loanId}/term-sheet` },
+    },
   });
   if (error) return { ok: false, error: error.message };
   return { ok: true };
@@ -379,7 +356,7 @@ export async function signTermSheet(loanId: string): Promise<{ ok: boolean; erro
     .single();
   const { data: loan } = await supabase
     .from("loans")
-    .select("custom_fields")
+    .select("loan_number,custom_fields")
     .eq("id", loanId)
     .single();
   if (!loan) return { ok: false, error: "No access to this loan." };
@@ -396,13 +373,19 @@ export async function signTermSheet(loanId: string): Promise<{ ok: boolean; erro
   };
   await admin.from("loans").update({ custom_fields: custom }).eq("id", loanId);
 
-  const body = `✅ Term sheet signed by ${name} on ${now.toLocaleString()} — IP ${ip}.\n(Authentication record; stands in for the e-signature certificate in this prototype.)`;
+  const body = `✅ Term sheet signed by ${name} on ${now.toLocaleString()} — IP ${ip}.\n(Authentication record; stands in for the e-signature certificate in this prototype. The signed copy is attached below.)`;
   const { error } = await admin.from("messages").insert({
     loan_id: loanId,
     sender_kind: "system",
     sender_role: "system",
     is_internal: false,
     body,
+    payload: {
+      doc: {
+        title: `Letter of Intent — ${loan.loan_number} (signed).pdf`,
+        url: `/api/loans/${loanId}/term-sheet`,
+      },
+    },
   });
   if (error) return { ok: false, error: error.message };
   return { ok: true };
