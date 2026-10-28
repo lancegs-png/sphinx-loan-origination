@@ -7,7 +7,7 @@ import { IntakeFormCard } from "@/components/intake-form-card";
 import type { Message } from "@/lib/types";
 
 function roleLabel(m: Message): string {
-  if (m.sender_kind === "ai") return "AI record keeper";
+  if (m.sender_kind === "ai") return "AI System";
   if (m.sender_kind === "system") return "System";
   switch (m.sender_role) {
     case "lending_team":

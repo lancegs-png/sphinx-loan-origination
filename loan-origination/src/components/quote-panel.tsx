@@ -95,12 +95,15 @@ export function QuotePanel({
     const origDollars = Math.round((loanAmt * num(f.origPct)) / 100);
     // Borrower-facing summary — NO net price / points (those are internal to the desk).
     const summary = [
-      `**Quote — ${loan.loan_number}**`,
+      "Here is your quote based on your preliminary info:",
+      "",
       `• Loan amount: $${loanAmt.toLocaleString()}`,
       `• Rate: ${f.rate}% · 30-year · ${f.prepay} prepay`,
       `• Origination fee: ${f.origPct}% ($${origDollars.toLocaleString()})`,
+      `• LTV: ${result.ltv}%`,
+      `• DSCR: ${result.dscr}`,
       `• Est. monthly payment (PITIA): $${result.pitia.toLocaleString()}`,
-      `• LTV: ${result.ltv}% · DSCR: ${result.dscr}`,
+      "",
       "Final terms are subject to underwriting and approval.",
     ].join("\n");
     setBusy(true);
