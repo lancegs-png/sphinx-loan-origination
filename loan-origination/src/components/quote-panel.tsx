@@ -38,6 +38,7 @@ export function QuotePanel({
 }) {
   const [f, setF] = useState({
     rate: "7.25",
+    origPct: "1",
     prepay: "5yr" as PrepayTerm,
     lockDays: 30 as 30 | 45 | 60,
     loanAmount: String(loan.loan_amount ?? ""),
@@ -90,17 +91,18 @@ export function QuotePanel({
 
   async function post() {
     if (!result) return;
+    const loanAmt = num(f.loanAmount);
+    const origDollars = Math.round((loanAmt * num(f.origPct)) / 100);
+    // Borrower-facing summary — NO net price / points (those are internal to the desk).
     const summary = [
       `**Quote — ${loan.loan_number}**`,
-      `• Loan amount: $${num(f.loanAmount).toLocaleString()}`,
+      `• Loan amount: $${loanAmt.toLocaleString()}`,
       `• Rate: ${f.rate}% · 30-year · ${f.prepay} prepay`,
-      `• Est. monthly (PITIA): $${result.pitia.toLocaleString()}`,
+      `• Origination fee: ${f.origPct}% ($${origDollars.toLocaleString()})`,
+      `• Est. monthly payment (PITIA): $${result.pitia.toLocaleString()}`,
       `• LTV: ${result.ltv}% · DSCR: ${result.dscr}`,
-      result.netPrice != null ? `• Price: ${result.netPrice} (${result.points! >= 0 ? "+" : ""}${result.points} pts)` : "",
-      result.eligible ? "• Preliminary eligibility: passes" : "• Note: review required",
-    ]
-      .filter(Boolean)
-      .join("\n");
+      "Final terms are subject to underwriting and approval.",
+    ].join("\n");
     setBusy(true);
     const res = await postQuoteToChat(loan.id, summary);
     setBusy(false);
@@ -122,6 +124,7 @@ export function QuotePanel({
     <div className="flex flex-col gap-3 text-sm">
       <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">Inputs</h3>
       {Num("Rate (%)", "rate")}
+      {Num("Origination fee (%)", "origPct")}
       <label className="flex flex-col gap-1">
         <span className="text-muted">Prepay</span>
         <select value={f.prepay} onChange={(e) => set("prepay", e.target.value as PrepayTerm)} className="rounded-md border border-line px-2 py-1.5">
@@ -198,7 +201,17 @@ export function QuotePanel({
                 <span>{result.points >= 0 ? "+" : ""}{result.points}</span>
               </div>
             )}
+            <div className="flex justify-between">
+              <span className="text-muted">Origination</span>
+              <span>
+                {f.origPct}% ($
+                {Math.round((num(f.loanAmount) * num(f.origPct)) / 100).toLocaleString()})
+              </span>
+            </div>
           </div>
+          <p className="text-xs text-muted">
+            Price &amp; points are internal — the posted summary shows only borrower-facing terms.
+          </p>
           <div
             className="status-pill self-start"
             style={{ color: result.eligible ? "var(--status-approved)" : "var(--status-outstanding)" }}
