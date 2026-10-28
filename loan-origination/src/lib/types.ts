@@ -35,6 +35,8 @@ export type FormFieldSpec = {
 
 export type MessagePayload = {
   form?: { intro?: string; fields: FormFieldSpec[] };
+  proceed?: boolean; // renders Yes/No ("proceed with the quoted terms?")
+  sign?: boolean; // renders a "Sign term sheet" control
 };
 
 export type Message = {

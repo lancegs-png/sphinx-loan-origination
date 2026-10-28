@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { askAi, intakeTurn } from "@/app/actions";
+import { askAi, intakeTurn, generateTermSheet, signTermSheet } from "@/app/actions";
 import { IntakeFormCard } from "@/components/intake-form-card";
 import type { Message } from "@/lib/types";
 
@@ -126,6 +126,34 @@ export function Chat({
     if (!res.ok) setAiError(res.error ?? "Intake couldn’t continue.");
   }
 
+  // Borrower accepts (or declines) the quoted terms. On Yes, the AI generates a term sheet.
+  async function proceedQuote(yes: boolean) {
+    setBusy(true);
+    const ok = await insertHuman(
+      yes
+        ? "Yes, I'd like to proceed with the quoted terms."
+        : "Not at this time — I'd like to think it over.",
+      false,
+    );
+    if (ok && yes) {
+      setAiError(null);
+      setAiBusy(true);
+      const res = await generateTermSheet(loanId);
+      setAiBusy(false);
+      if (!res.ok) setAiError(res.error ?? "Couldn't generate the term sheet.");
+    }
+    setBusy(false);
+  }
+
+  // Inline e-signature on the term sheet (records signer, time, IP).
+  async function signTS() {
+    setBusy(true);
+    setAiError(null);
+    const res = await signTermSheet(loanId);
+    setBusy(false);
+    if (!res.ok) setAiError(res.error ?? "Couldn't record the signature.");
+  }
+
   async function ask() {
     const text = body.trim();
     if (!text) return;
@@ -162,6 +190,36 @@ export function Chat({
                 onSubmit={(values) => submitForm(m.payload!.form!.fields, values)}
               />
             )}
+            {m.payload?.proceed && idx === messages.length - 1 && (
+              <div className="mt-2 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => proceedQuote(true)}
+                  disabled={busy || aiBusy}
+                  className="rounded-md bg-fg px-4 py-2 font-medium text-white disabled:opacity-50"
+                >
+                  Yes, proceed
+                </button>
+                <button
+                  type="button"
+                  onClick={() => proceedQuote(false)}
+                  disabled={busy || aiBusy}
+                  className="rounded-md border border-line px-4 py-2 font-medium disabled:opacity-50"
+                >
+                  Not now
+                </button>
+              </div>
+            )}
+            {m.payload?.sign && idx === messages.length - 1 && (
+              <button
+                type="button"
+                onClick={signTS}
+                disabled={busy || aiBusy}
+                className="mt-2 rounded-md bg-fg px-4 py-2 font-medium text-white disabled:opacity-50"
+              >
+                Sign term sheet
+              </button>
+            )}
           </div>
         ))}
         <div ref={endRef} />
@@ -170,7 +228,7 @@ export function Chat({
       <form onSubmit={send} className="border-t border-line px-6 py-4">
         {aiBusy && (
           <p className="mb-2 text-sm text-muted">
-            {intakeMode ? "Setting up the loan…" : "AI record keeper is thinking…"}
+            {intakeMode ? "Setting up the loan…" : "AI System is thinking…"}
           </p>
         )}
         {aiError && (

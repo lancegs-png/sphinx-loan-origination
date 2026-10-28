@@ -106,8 +106,19 @@ export function QuotePanel({
       "",
       "Final terms are subject to underwriting and approval.",
     ].join("\n");
+    // Borrower-facing terms stored with the quote (drives the term sheet) — no price/points.
+    const terms = {
+      loan_amount: loanAmt,
+      rate: f.rate,
+      prepay: f.prepay,
+      origination_pct: f.origPct,
+      origination_amount: origDollars,
+      ltv: result.ltv,
+      dscr: result.dscr,
+      pitia: result.pitia,
+    };
     setBusy(true);
-    const res = await postQuoteToChat(loan.id, summary);
+    const res = await postQuoteToChat(loan.id, summary, terms);
     setBusy(false);
     setMsg(res.ok ? "Posted to chat." : res.error ?? "Could not post.");
   }

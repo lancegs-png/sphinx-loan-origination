@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { answerLoanQuestion } from "@/lib/ai/record-keeper";
@@ -260,6 +261,7 @@ export async function quoteLoan(
 export async function postQuoteToChat(
   loanId: string,
   summary: string,
+  terms: Record<string, unknown>,
 ): Promise<{ ok: boolean; error?: string }> {
   const supabase = await createClient();
   const {
@@ -273,8 +275,80 @@ export async function postQuoteToChat(
     .single();
   if (!profile?.is_lending_team) return { ok: false, error: "Lending team only." };
 
-  const { data: loan } = await supabase.from("loans").select("id").eq("id", loanId).single();
+  const { data: loan } = await supabase
+    .from("loans")
+    .select("custom_fields")
+    .eq("id", loanId)
+    .single();
   if (!loan) return { ok: false, error: "No access to this loan." };
+
+  const admin = createServiceRoleClient();
+  // Store the borrower-facing quote terms (no price/points) for the term sheet.
+  const custom = { ...((loan.custom_fields as Record<string, unknown>) ?? {}), quote: terms };
+  await admin.from("loans").update({ custom_fields: custom }).eq("id", loanId);
+
+  const body = `${summary}\n\nWould you like to proceed with the quoted terms?`;
+  const { error } = await admin.from("messages").insert({
+    loan_id: loanId,
+    sender_kind: "ai",
+    sender_role: "ai",
+    is_internal: false,
+    body,
+    payload: { proceed: true },
+  });
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
+}
+
+/** Borrower accepted the quote — generate an LOI-style term sheet from the stored
+ *  quote terms + loan data and post it to chat with a Sign control. */
+export async function generateTermSheet(loanId: string): Promise<{ ok: boolean; error?: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+
+  const { data: loan } = await supabase
+    .from("loans")
+    .select("loan_number,property_address,borrower_name,custom_fields")
+    .eq("id", loanId)
+    .single();
+  if (!loan) return { ok: false, error: "No access to this loan." };
+
+  const cf = (loan.custom_fields as Record<string, unknown>) ?? {};
+  const q = cf.quote as Record<string, unknown> | undefined;
+  if (!q) return { ok: false, error: "There's no quote on file to turn into a term sheet yet." };
+
+  const n = (v: unknown) => Number(v ?? 0).toLocaleString();
+  const borrower = (cf.entity_name as string) || loan.borrower_name || "Borrower";
+  const guarantor =
+    [cf.guarantor_first_name, cf.guarantor_last_name].filter(Boolean).join(" ") || "—";
+
+  const ts = [
+    "TERM SHEET — Sphinx Capital",
+    `Date: ${new Date().toLocaleDateString()}`,
+    "",
+    `Borrower: ${borrower}`,
+    `Guarantor: ${guarantor}`,
+    `Property: ${loan.property_address ?? "—"}`,
+    "",
+    "GENERAL TERMS",
+    `• Loan Amount: $${n(q.loan_amount)}`,
+    "• Loan Term: 30-year (DSCR)",
+    `• Prepayment: ${q.prepay ?? "—"}`,
+    "• Amortization: Fully Amortized",
+    "",
+    "FINANCIAL TERMS",
+    `• Interest Rate: ${q.rate}%`,
+    `• Origination Fee: ${q.origination_pct}% ($${n(q.origination_amount)})`,
+    `• Estimated Monthly Payment (PITIA): $${n(q.pitia)}`,
+    `• LTV: ${q.ltv}% · DSCR: ${q.dscr}`,
+    "",
+    "These are preliminary terms, subject to underwriting review, the due-diligence items on your checklist, and final credit approval. All loans are business-purpose, non-owner-occupied, require a personal guarantor, and require ACH payments.",
+    "",
+    "By signing below, you accept these preliminary terms and your intent to proceed.",
+  ].join("\n");
 
   const admin = createServiceRoleClient();
   const { error } = await admin.from("messages").insert({
@@ -282,7 +356,53 @@ export async function postQuoteToChat(
     sender_kind: "ai",
     sender_role: "ai",
     is_internal: false,
-    body: summary,
+    body: ts,
+    payload: { sign: true },
+  });
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
+}
+
+/** Records an inline e-signature on the term sheet with signer, timestamp, and IP
+ *  (the authentication record), and posts a confirmation. */
+export async function signTermSheet(loanId: string): Promise<{ ok: boolean; error?: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("full_name,email")
+    .eq("id", user.id)
+    .single();
+  const { data: loan } = await supabase
+    .from("loans")
+    .select("custom_fields")
+    .eq("id", loanId)
+    .single();
+  if (!loan) return { ok: false, error: "No access to this loan." };
+
+  const h = await headers();
+  const ip = (h.get("x-forwarded-for")?.split(",")[0] || h.get("x-real-ip") || "unknown").trim();
+  const name = profile?.full_name || profile?.email || "Signer";
+  const now = new Date();
+
+  const admin = createServiceRoleClient();
+  const custom = {
+    ...((loan.custom_fields as Record<string, unknown>) ?? {}),
+    term_sheet: { signed_by: name, signed_at: now.toISOString(), ip },
+  };
+  await admin.from("loans").update({ custom_fields: custom }).eq("id", loanId);
+
+  const body = `✅ Term sheet signed by ${name} on ${now.toLocaleString()} — IP ${ip}.\n(Authentication record; stands in for the e-signature certificate in this prototype.)`;
+  const { error } = await admin.from("messages").insert({
+    loan_id: loanId,
+    sender_kind: "system",
+    sender_role: "system",
+    is_internal: false,
+    body,
   });
   if (error) return { ok: false, error: error.message };
   return { ok: true };
