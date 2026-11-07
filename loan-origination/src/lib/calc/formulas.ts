@@ -78,13 +78,14 @@ export function dscrCalcs(get: Get): Record<string, unknown> {
   const monthly_insurance = annualIns == null ? null : r2(annualIns / 12);
   const monthly_hoa = annualHoa == null ? null : r2(annualHoa / 12);
 
-  const loanAmount = num(get, "loan_amount");
+  const ltv = num(get, "ltv"); // entered input (percent)
   const asIs = num(get, "as_is_value");
   const rate = num(get, "interest_rate");
   const amortMonths = num(get, "amortization_term_months") ?? 360;
   const ioMonths = num(get, "io_months") ?? 0;
 
-  const ltv = loanAmount != null && asIs ? r2((loanAmount / asIs) * 100) : null;
+  // loan_amount is derived from LTV: as_is_value x ltv%.
+  const loanAmount = asIs != null && ltv != null ? r2((asIs * ltv) / 100) : null;
   const principal_and_interest = monthlyPI(loanAmount, rate, amortMonths, ioMonths);
   const piti =
     principal_and_interest == null
@@ -110,20 +111,19 @@ export function dscrCalcs(get: Get): Record<string, unknown> {
       ? r2(loanAmount - (reserve_amount ?? 0) - (origination_fee_amount ?? 0) - uw - legal)
       : null;
 
-  const cltv = ltv; // 1st lien only
   return {
+    loan_amount: loanAmount, // derived from LTV
     monthly_taxes,
     monthly_insurance,
     monthly_hoa,
     principal_and_interest,
     monthly_piti: piti,
-    ltv,
     dscr,
     origination_fee_amount,
     reserve_amount,
     cash_out,
     net_wire,
-    cltv,
+    cltv: ltv, // 1st lien only
   };
 }
 

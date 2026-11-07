@@ -1,10 +1,10 @@
 -- 0011_calc_apply.sql
 -- P16: a secure write path for the calculation module, plus the loan_amount source fix.
 
--- ---------- 1. loan_amount is an input, not a calculated field ----------
--- DSCR: the lender enters loan_amount (ltv is derived). RTL: the calc module writes it
--- as total_loan_amount. Either way it is writable, so it is 'manual', not 'calculated'.
-update public.field_definitions set source = 'manual', calc_key = null where key = 'loan_amount';
+-- ---------- 1. DSCR: the lender enters LTV; loan_amount derives from it ----------
+-- ltv becomes a manual input (loan_amount = as_is_value x ltv). loan_amount stays
+-- calculated (for RTL the calc module writes it as total_loan_amount).
+update public.field_definitions set source = 'manual', calc_key = null where key = 'ltv';
 
 -- ---------- 2. apply_calc_values: write calculated fields past the read-only guard ----------
 -- The enforce trigger blocks writes to source='calculated' fields unless
