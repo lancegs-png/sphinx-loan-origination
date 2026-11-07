@@ -159,7 +159,7 @@ export const TEMPLATES: TemplateDef[] = [
     branding: "sphinx",
     requiresVerified: true,
     requiredKeys: ["loan_amount", "interest_rate", "property_address", "guarantor_first_name"],
-    generatable: false,
+    generatable: true,
     format: "xlsx",
   },
 ];
