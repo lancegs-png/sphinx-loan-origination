@@ -66,6 +66,23 @@ export async function buildTemplateData(
   out.loan_number = loan?.loan_number ?? "";
   if (!out.property_address && loan?.property_address) out.property_address = loan.property_address;
 
+  // Property addresses (repeat group `property`, up to 30). The "Re:" header shows the
+  // single address, or "Various Properties - See Exhibit A" for multi-property deals;
+  // Exhibit A lists every address (numbered when there is more than one) and always renders.
+  const addresses: string[] = [];
+  const first = (fv.property_address?.current as string | undefined) ?? loan?.property_address ?? "";
+  if (first) addresses.push(String(first));
+  for (let i = 2; i <= 30; i++) {
+    const v = fv[`property_address#${i}`]?.current;
+    if (v != null && v !== "") addresses.push(String(v));
+  }
+  out.re_line =
+    addresses.length > 1 ? "Various Properties – See Exhibit A" : addresses[0] ?? "";
+  out.exhibit_a =
+    addresses.length > 1
+      ? addresses.map((a, i) => `${i + 1}. ${a}`).join("\n")
+      : addresses[0] ?? "";
+
   // Company config.
   out.lender_signer = company.lender.signer;
   out.lender_signer_title = company.lender.signer_title;
