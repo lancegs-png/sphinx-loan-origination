@@ -207,6 +207,11 @@ after depends on them.**
   alongside loan fields.
 
 ### P20 — Template fill engine  *(brief §9)*
+- **Templates tab on the deal dashboard** (requested): a tab listing every template in
+  scope, each downloadable at any time. A template whose required fields are all present
+  (and verified, for verified-only templates) is highlighted green / "ready"; one with
+  missing fields is listed plain, ideally showing which fields are outstanding. Reuses
+  each template's declared required-field set (below).
 - `{{key}}` = current value; `{{key_initial}}` / `{{key_verified}}`; `{{key_2}}` for
   repeat index (idx 1 omits suffix). `#hashtag` = alias only. Each template declares
   program, stage, branding (`sphinx | white_label`; white label only swaps
