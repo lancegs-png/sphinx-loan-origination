@@ -31,8 +31,8 @@ export type TermSheetData = {
   lenderSignerTitle: string;
   signature?: {
     name: string;
-    dateStr: string; // "11/7/2026"
-    dateTimeStr: string; // "November 7, 2026 at 2:34:12 PM EST"
+    dateStr: string; // "11/7/2026" — friendly date for the acceptance block
+    signedAtIso: string; // raw ISO — formatted to UTC for the audit report
     email: string;
     ip: string;
   } | null;
@@ -144,10 +144,7 @@ export async function assembleTermSheetData(
         ? {
             name: sig.signed_by,
             dateStr: new Date(sig.signed_at).toLocaleDateString("en-US"),
-            dateTimeStr: new Date(sig.signed_at).toLocaleString("en-US", {
-              dateStyle: "long",
-              timeStyle: "long",
-            }),
+            signedAtIso: sig.signed_at,
             email: sig.email ?? "",
             ip: sig.ip ?? "",
           }
@@ -195,23 +192,64 @@ export async function buildLoiTemplateData(
   gapFill("principal_and_interest", dollars(d.monthlyPI));
   gapFill("origination_fee_pct", d.originationPct != null ? `${d.originationPct}%` : "");
 
-  // Signature + authentication-certificate fields. Filled only on a signed copy; on an
-  // unsigned copy the acceptance lines stay blank (for wet signing) and the `signed`
-  // flag is empty, so the template's authentication section ({{#signed}}…{{/signed}})
-  // renders not at all.
+  // Signature + audit-report fields. Filled only on a signed copy; on an unsigned copy
+  // the acceptance lines stay blank (for wet signing) and the `signed` flag is empty, so
+  // the template's audit section ({{#signed}}…{{/signed}}) renders not at all.
   if (d.signature) {
+    const sentAtIso = await loiSentAt(client, id);
     base.signed = "1";
     base.signature_name = d.signature.name;
-    base.signature_sig = `/s/ ${d.signature.name}`;
+    base.signature_sig = d.signature.name; // typed e-signature (italic in the template)
     base.signature_date = d.signature.dateStr;
+    // Audit report (UTC, like a standard e-sign audit trail).
     base.auth_doc = `Letter of Intent — ${assembled.loanNumber}`;
+    base.auth_docid = id;
     base.auth_signer = d.signature.name;
     base.auth_email = d.signature.email;
-    base.auth_datetime = d.signature.dateTimeStr;
+    base.auth_datetime = utcStamp(d.signature.signedAtIso);
     base.auth_ip = d.signature.ip;
+    base.auth_sent_to = d.signature.email;
+    base.auth_sent_at = sentAtIso ? utcStamp(sentAtIso) : "";
   } else {
     base.signed = "";
   }
 
   return { map: base, loanNumber: assembled.loanNumber, signed: !!d.signature };
+}
+
+/** Format an ISO timestamp as a UTC audit stamp, e.g. "Nov 07, 2026 14:09:54 UTC". */
+function utcStamp(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const date = d.toLocaleDateString("en-US", {
+    month: "short",
+    day: "2-digit",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+  const time = d.toLocaleTimeString("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+    timeZone: "UTC",
+  });
+  return `${date} ${time} UTC`;
+}
+
+/** When the Letter of Intent was issued to the borrower: the created_at of the earliest
+ *  chat message that delivered the term-sheet document. Null if none is found. */
+async function loiSentAt(client: SupabaseClient, loanId: string): Promise<string | null> {
+  const { data: msgs } = await client
+    .from("messages")
+    .select("created_at,payload")
+    .eq("loan_id", loanId)
+    .order("created_at", { ascending: true });
+  for (const m of msgs ?? []) {
+    const p = (m.payload ?? {}) as { sign?: boolean; doc?: { url?: string } };
+    if (p.sign === true || p.doc?.url?.endsWith("/term-sheet")) {
+      return m.created_at as string;
+    }
+  }
+  return null;
 }
