@@ -4,6 +4,7 @@ import { useState } from "react";
 import { LoanData } from "./loan-data";
 import { QuotePanel } from "./quote-panel";
 import { DocumentsPanel } from "./documents-panel";
+import { TemplatesPanel } from "./templates-panel";
 import type {
   ChecklistItem,
   FieldDef,
@@ -13,7 +14,7 @@ import type {
   Participant,
 } from "@/lib/types";
 
-type Tab = "people" | "documents" | "loan" | "quote" | "notes";
+type Tab = "people" | "documents" | "loan" | "quote" | "templates" | "notes";
 
 function participantRoleLabel(role: string) {
   if (role === "lending_team") return "Lending team";
@@ -48,6 +49,7 @@ export function Sidebar({
     { key: "documents", label: "Documents" },
     { key: "loan", label: "Loan Info" },
     { key: "quote", label: "Quote", lenderOnly: true },
+    { key: "templates", label: "Templates", lenderOnly: true },
     { key: "notes", label: "Internal Notes", lenderOnly: true },
   ];
 
@@ -105,6 +107,14 @@ export function Sidebar({
             values={fieldValues}
             canEdit={isLender}
             isLender={isLender}
+          />
+        )}
+
+        {tab === "templates" && isLender && (
+          <TemplatesPanel
+            loanId={loan.id}
+            programKey={loan.loan_program ?? loan.loan_type}
+            values={fieldValues}
           />
         )}
 
