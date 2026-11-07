@@ -124,7 +124,7 @@ export const TEMPLATES: TemplateDef[] = [
       "property_address", "servicer_name", "principal_and_interest", "monthly_taxes",
       "monthly_insurance", "monthly_piti", "first_payment_date",
     ],
-    generatable: false,
+    generatable: true,
     format: "docx",
   },
   {
@@ -137,7 +137,7 @@ export const TEMPLATES: TemplateDef[] = [
     requiredKeys: [
       "borrower_entity", "closing_date", "loan_amount", "property_address", "legal_description",
     ],
-    generatable: false,
+    generatable: true,
     format: "docx",
   },
   {
@@ -148,7 +148,7 @@ export const TEMPLATES: TemplateDef[] = [
     branding: "sphinx",
     requiresVerified: true,
     requiredKeys: ["servicing_number", "borrower_entity", "borrower_phone", "borrower_email", "monthly_piti"],
-    generatable: false,
+    generatable: true,
     format: "docx",
   },
   {

@@ -5,7 +5,11 @@ import { renderTermSheetPdf } from "@/lib/term-sheet/document";
 import { loadFieldValues } from "@/lib/fields";
 import { loadCompanyConfig } from "@/lib/company";
 import { buildDataTapeCsv } from "@/lib/templates/data-tape";
+import { buildTemplateData, fillDocx } from "@/lib/templates/docx";
 import { TEMPLATES } from "@/lib/templates/registry";
+
+const DOCX_TEMPLATES = new Set(["ach_form", "first_payment_letter", "assignment_allonge"]);
+const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -43,7 +47,20 @@ export async function GET(
     });
   }
 
-  // DSCR LOI. (Served as PDF for now; .docx fill lands once the real templates arrive.)
+  // Tagged .docx closing templates — fill {{key}} with real values.
+  if (DOCX_TEMPLATES.has(def.id)) {
+    const data = await buildTemplateData(supabase, id);
+    const buf = fillDocx(def.id, data);
+    return new Response(new Uint8Array(buf), {
+      headers: {
+        "Content-Type": DOCX_MIME,
+        "Content-Disposition": `attachment; filename="${def.name} - ${street}.docx"`,
+        "Cache-Control": "no-store",
+      },
+    });
+  }
+
+  // DSCR LOI. (Served as PDF; the LOI .docx is not yet tagged.)
   const assembled = await assembleTermSheetData(supabase, id);
   if (!assembled) return new Response("Not found", { status: 404 });
   const pdf = await renderTermSheetPdf(assembled.data);
