@@ -2,8 +2,14 @@ import { notFound, redirect } from "next/navigation";
 import { getSessionProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { loadFieldValues } from "@/lib/fields";
+import { loadLoanChecklist } from "@/lib/checklist";
 import { DealView } from "@/components/deal-view";
-import type { FieldDef, InternalNote, Loan, Message, Participant } from "@/lib/types";
+import type { ChecklistItem, FieldDef, InternalNote, Loan, Message, Participant } from "@/lib/types";
+
+const STAGE_ORDER = [
+  "intake", "pre_qualification", "quote_term_sheet", "processing",
+  "underwriting", "final_approval", "closing", "post_close",
+];
 
 export default async function LoanPage({
   params,
@@ -52,6 +58,10 @@ export default async function LoanPage({
   // Current field values (RLS filters lender-only fields for borrowers).
   const fieldValues = await loadFieldValues(supabase, id);
 
+  const typedLoan = loan as Loan;
+  const checklist = await loadLoanChecklist(supabase, id, typedLoan.program_id);
+  const atProcessing = STAGE_ORDER.indexOf(typedLoan.stage) >= STAGE_ORDER.indexOf("processing");
+
   const parts = (participants as Participant[]) ?? [];
   const myRole =
     parts.find((p) => p.user_id === userId)?.participant_role ??
@@ -69,6 +79,8 @@ export default async function LoanPage({
       intakeMode={(loan as Loan).stage === "intake"}
       fieldDefs={(fieldDefs as FieldDef[]) ?? []}
       fieldValues={fieldValues}
+      checklist={checklist}
+      atProcessing={atProcessing}
     />
   );
 }

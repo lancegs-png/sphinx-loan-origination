@@ -2,7 +2,15 @@ import Link from "next/link";
 import { StageBar } from "./stage-bar";
 import { Chat } from "./chat";
 import { Sidebar } from "./sidebar";
-import type { FieldDef, FieldValues, InternalNote, Loan, Message, Participant } from "@/lib/types";
+import type {
+  ChecklistItem,
+  FieldDef,
+  FieldValues,
+  InternalNote,
+  Loan,
+  Message,
+  Participant,
+} from "@/lib/types";
 
 export function DealView({
   loan,
@@ -15,6 +23,8 @@ export function DealView({
   intakeMode,
   fieldDefs,
   fieldValues,
+  checklist,
+  atProcessing,
 }: {
   loan: Loan;
   messages: Message[];
@@ -26,6 +36,8 @@ export function DealView({
   intakeMode: boolean;
   fieldDefs: FieldDef[];
   fieldValues: FieldValues;
+  checklist: ChecklistItem[];
+  atProcessing: boolean;
 }) {
   return (
     <div className="flex h-screen flex-col">
@@ -69,6 +81,8 @@ export function DealView({
           isLender={isLender}
           fieldDefs={fieldDefs}
           fieldValues={fieldValues}
+          checklist={checklist}
+          atProcessing={atProcessing}
         />
       </div>
     </div>

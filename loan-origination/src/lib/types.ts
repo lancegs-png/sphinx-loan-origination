@@ -85,6 +85,17 @@ export type FieldCell = {
 // Keyed by field key for idx 1, or `${key}#${idx}` for repeats.
 export type FieldValues = Record<string, FieldCell>;
 
+export type ChecklistItem = {
+  id: string;
+  documentTypeId: string;
+  name: string;
+  category: string | null;
+  assignee: string; // borrower | lending_team
+  guidance: string | null;
+  status: string; // doc_status: outstanding | ordered | update_needed | approved | not_applicable
+  notes: string | null;
+};
+
 export type InternalNote = {
   id: string;
   loan_id: string;

@@ -3,7 +3,15 @@
 import { useState } from "react";
 import { LoanData } from "./loan-data";
 import { QuotePanel } from "./quote-panel";
-import type { FieldDef, FieldValues, InternalNote, Loan, Participant } from "@/lib/types";
+import { DocumentsPanel } from "./documents-panel";
+import type {
+  ChecklistItem,
+  FieldDef,
+  FieldValues,
+  InternalNote,
+  Loan,
+  Participant,
+} from "@/lib/types";
 
 type Tab = "people" | "documents" | "loan" | "quote" | "notes";
 
@@ -21,6 +29,8 @@ export function Sidebar({
   isLender,
   fieldDefs,
   fieldValues,
+  checklist,
+  atProcessing,
 }: {
   loan: Loan;
   participants: Participant[];
@@ -28,6 +38,8 @@ export function Sidebar({
   isLender: boolean;
   fieldDefs: FieldDef[];
   fieldValues: FieldValues;
+  checklist: ChecklistItem[];
+  atProcessing: boolean;
 }) {
   const [tab, setTab] = useState<Tab>("people");
 
@@ -73,7 +85,14 @@ export function Sidebar({
           </ul>
         )}
 
-        {tab === "documents" && <p className="text-muted">No documents yet.</p>}
+        {tab === "documents" && (
+          <DocumentsPanel
+            loanId={loan.id}
+            items={checklist}
+            canEdit={isLender}
+            canGenerate={isLender && atProcessing}
+          />
+        )}
 
         {tab === "quote" && isLender && (
           <QuotePanel loan={loan} values={fieldValues} />

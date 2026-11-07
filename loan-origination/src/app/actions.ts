@@ -493,6 +493,78 @@ export async function setLoanFieldLock(input: {
   return { ok: true };
 }
 
+// ---------- Per-loan checklist (P18) ----------
+
+/** Instantiate a loan's checklist from its program's checklist (idempotent). */
+export async function createLoanChecklist(
+  loanId: string,
+): Promise<{ ok: boolean; error?: string; created?: number }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+
+  const { data: loan } = await supabase.from("loans").select("program_id").eq("id", loanId).single();
+  if (!loan) return { ok: false, error: "No access to this loan." };
+  if (!loan.program_id) return { ok: false, error: "This loan has no program set yet." };
+
+  const admin = createServiceRoleClient();
+  const { data: items } = await admin
+    .from("program_checklist_items")
+    .select("document_type_id")
+    .eq("program_id", loan.program_id);
+  if (!items?.length) return { ok: false, error: "No checklist is configured for this program." };
+
+  const rows = items.map((i) => ({ loan_id: loanId, document_type_id: i.document_type_id, status: "outstanding" }));
+  const { error } = await admin
+    .from("loan_checklist_items")
+    .upsert(rows, { onConflict: "loan_id,document_type_id", ignoreDuplicates: true });
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, created: rows.length };
+}
+
+/** Update a checklist item's status/notes (lending team) and log it to audit_events. */
+export async function setChecklistItemStatus(input: {
+  loanId: string;
+  itemId: string;
+  status: string;
+  notes?: string;
+}): Promise<{ ok: boolean; error?: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+
+  const { data: before } = await supabase
+    .from("loan_checklist_items")
+    .select("status,document_type_id")
+    .eq("id", input.itemId)
+    .single();
+
+  const patch: Record<string, unknown> = { status: input.status, updated_by: user.id, updated_at: new Date().toISOString() };
+  if (input.notes !== undefined) patch.notes = input.notes;
+  const { error } = await supabase.from("loan_checklist_items").update(patch).eq("id", input.itemId);
+  if (error) return { ok: false, error: error.message };
+
+  const admin = createServiceRoleClient();
+  await admin.from("audit_events").insert({
+    loan_id: input.loanId,
+    actor_id: user.id,
+    actor_kind: "human",
+    event_type: "checklist_status",
+    is_internal: false,
+    payload: {
+      item_id: input.itemId,
+      document_type_id: before?.document_type_id,
+      old: before?.status,
+      new: input.status,
+    },
+  });
+  return { ok: true };
+}
+
 // ---------- Admin backend: document types, checklists, pricing, users ----------
 
 export async function saveDocumentType(input: {
