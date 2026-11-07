@@ -81,5 +81,8 @@ export async function buildTemplateData(
   out.note_buyer_entity = nb.entity;
   out.note_buyer_address = nb.address;
 
+  // Defaults for fields that are conventionally fixed on the LOI.
+  if (!out.rate_buydown_pct) out.rate_buydown_pct = "0%";
+
   return out;
 }

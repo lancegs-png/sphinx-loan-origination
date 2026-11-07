@@ -37,14 +37,26 @@ export function TemplatesPanel({
             <div className="flex items-center justify-between gap-2">
               <span className="font-medium">{t.name}</span>
               {t.generatable ? (
-                <a
-                  href={`/api/loans/${loanId}/template/${t.id}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="rounded-md border border-line px-2.5 py-1 text-xs font-medium hover:bg-black/5"
-                >
-                  Download
-                </a>
+                <span className="flex shrink-0 gap-1.5">
+                  <a
+                    href={`/api/loans/${loanId}/template/${t.id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="rounded-md border border-line px-2.5 py-1 text-xs font-medium hover:bg-black/5"
+                  >
+                    {t.format === "xlsx" ? "CSV" : t.format === "docx" ? "Word" : "Download"}
+                  </a>
+                  {t.format === "docx" && (
+                    <a
+                      href={`/api/loans/${loanId}/template/${t.id}?format=pdf`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="rounded-md border border-line px-2.5 py-1 text-xs font-medium hover:bg-black/5"
+                    >
+                      PDF
+                    </a>
+                  )}
+                </span>
               ) : (
                 <span className="text-xs text-muted">soon</span>
               )}

@@ -4,6 +4,7 @@ import { loadFieldValues } from "@/lib/fields";
 import { loadCompanyConfig } from "@/lib/company";
 import { buildDataTapeCsv } from "@/lib/templates/data-tape";
 import { buildTemplateData, fillDocx } from "@/lib/templates/docx";
+import { docxToPdf } from "@/lib/templates/pdf";
 import { TEMPLATES } from "@/lib/templates/registry";
 
 const DOCX_TEMPLATES = new Set([
@@ -18,10 +19,11 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ id: string; templateId: string }> },
 ) {
   const { id, templateId } = await params;
+  const asPdf = new URL(req.url).searchParams.get("format") === "pdf";
   const def = TEMPLATES.find((t) => t.id === templateId);
   if (!def || !def.generatable) return new Response("Template not available", { status: 404 });
 
@@ -54,6 +56,20 @@ export async function GET(
   if (DOCX_TEMPLATES.has(def.id)) {
     const data = await buildTemplateData(supabase, id);
     const buf = fillDocx(def.id, data);
+    if (asPdf) {
+      try {
+        const pdf = await docxToPdf(buf); // LibreOffice: faithful .docx -> PDF
+        return new Response(new Uint8Array(pdf), {
+          headers: {
+            "Content-Type": "application/pdf",
+            "Content-Disposition": `inline; filename="${def.name} - ${street}.pdf"`,
+            "Cache-Control": "no-store",
+          },
+        });
+      } catch (e) {
+        return new Response(e instanceof Error ? e.message : "PDF export failed.", { status: 503 });
+      }
+    }
     return new Response(new Uint8Array(buf), {
       headers: {
         "Content-Type": DOCX_MIME,
