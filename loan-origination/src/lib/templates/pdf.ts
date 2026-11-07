@@ -1,5 +1,5 @@
 import "server-only";
-import { exec } from "node:child_process";
+import { exec, execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { mkdtemp, writeFile, readFile, rm, access } from "node:fs/promises";
 import { constants } from "node:fs";
@@ -7,6 +7,16 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 const execp = promisify(exec);
+const execFileP = promisify(execFile);
+
+// Keep the logo/images sharp: lossless (PNG) compression, no resolution downsampling.
+const PDF_FILTER =
+  "pdf:writer_pdf_Export:" +
+  JSON.stringify({
+    UseLosslessCompression: { type: "boolean", value: "true" },
+    ReduceImageResolution: { type: "boolean", value: "false" },
+    MaxImageResolution: { type: "long", value: "1200" },
+  });
 
 // LibreOffice headless is the faithful .docx -> PDF path (keeps the template's layout).
 const CANDIDATES = [
@@ -52,10 +62,10 @@ export async function docxToPdf(docx: Buffer): Promise<Buffer> {
   const inPath = path.join(dir, "doc.docx");
   await writeFile(inPath, docx);
   try {
-    await execp(
-      `"${bin}" --headless --convert-to pdf --outdir "${dir}" "${inPath}"`,
-      { timeout: 60_000 },
-    );
+    // execFile (no shell) so the JSON filter arg needs no escaping.
+    await execFileP(bin, ["--headless", "--convert-to", PDF_FILTER, "--outdir", dir, inPath], {
+      timeout: 60_000,
+    });
     return await readFile(path.join(dir, "doc.pdf"));
   } finally {
     await rm(dir, { recursive: true, force: true });
