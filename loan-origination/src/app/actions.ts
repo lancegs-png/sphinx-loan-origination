@@ -328,13 +328,14 @@ export async function generateTermSheet(loanId: string): Promise<{ ok: boolean; 
 
   const { data: loan } = await supabase
     .from("loans")
-    .select("loan_number,custom_fields")
+    .select("loan_number,opportunity_number,custom_fields")
     .eq("id", loanId)
     .single();
   if (!loan) return { ok: false, error: "No access to this loan." };
 
   const cf = (loan.custom_fields as Record<string, unknown>) ?? {};
   if (!cf.quote) return { ok: false, error: "There's no quote on file to turn into a term sheet yet." };
+  const ref = loan.loan_number ?? loan.opportunity_number; // SPHX once signed, OPP before
 
   const body =
     "Here is your Letter of Intent / term sheet based on the quoted terms. Please open and review it, " +
@@ -349,7 +350,7 @@ export async function generateTermSheet(loanId: string): Promise<{ ok: boolean; 
     body,
     payload: {
       sign: true,
-      doc: { title: `Letter of Intent — ${loan.loan_number}.pdf`, url: `/api/loans/${loanId}/term-sheet` },
+      doc: { title: `Letter of Intent — ${ref}.pdf`, url: `/api/loans/${loanId}/term-sheet` },
     },
   });
   if (error) return { ok: false, error: error.message };
@@ -372,7 +373,7 @@ export async function signTermSheet(loanId: string): Promise<{ ok: boolean; erro
     .single();
   const { data: loan } = await supabase
     .from("loans")
-    .select("loan_number,custom_fields")
+    .select("loan_number,opportunity_number,custom_fields")
     .eq("id", loanId)
     .single();
   if (!loan) return { ok: false, error: "No access to this loan." };
@@ -383,6 +384,15 @@ export async function signTermSheet(loanId: string): Promise<{ ok: boolean; erro
   const now = new Date();
 
   const admin = createServiceRoleClient();
+
+  // Opportunity -> loan: on first signature, assign the permanent SPHX loan number.
+  // Idempotent and grandfather-safe — returns the existing number if one is set.
+  let loanNumber = loan.loan_number;
+  if (!loanNumber) {
+    const { data: assigned } = await admin.rpc("assign_loan_number", { p_loan_id: loanId });
+    loanNumber = (assigned as string | null) ?? loan.opportunity_number;
+  }
+
   const custom = {
     ...((loan.custom_fields as Record<string, unknown>) ?? {}),
     term_sheet: { signed_by: name, signed_at: now.toISOString(), ip },
@@ -398,7 +408,7 @@ export async function signTermSheet(loanId: string): Promise<{ ok: boolean; erro
     body,
     payload: {
       doc: {
-        title: `Letter of Intent — ${loan.loan_number} (signed).pdf`,
+        title: `Letter of Intent — ${loanNumber} (signed).pdf`,
         url: `/api/loans/${loanId}/term-sheet`,
       },
     },
@@ -517,10 +527,11 @@ export async function syncLoanToSheet(
   const admin = createServiceRoleClient();
   const { data: loan } = await admin
     .from("loans")
-    .select("loan_number,sheet_id,drive_folder_id")
+    .select("loan_number,opportunity_number,sheet_id,drive_folder_id")
     .eq("id", loanId)
     .single();
   if (!loan) return { ok: false, error: "No access to this loan." };
+  const ref = loan.loan_number ?? loan.opportunity_number;
 
   const [{ data: defs }, { data: vals }] = await Promise.all([
     admin.from("field_definitions").select("key,label,section,sort").order("sort"),
@@ -557,7 +568,7 @@ export async function syncLoanToSheet(
   try {
     let sheetId = loan.sheet_id as string | null;
     if (!sheetId) {
-      sheetId = await createLoanSheet(`Loan ${loan.loan_number} — Field Data`, loan.drive_folder_id);
+      sheetId = await createLoanSheet(`Loan ${ref} — Field Data`, loan.drive_folder_id);
       await admin.from("loans").update({ sheet_id: sheetId }).eq("id", loanId);
     }
     await writeSheetValues(sheetId, rows);

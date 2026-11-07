@@ -25,7 +25,7 @@ export function LoanPicker({ loans, email }: { loans: Loan[]; email: string }) {
                 href={`/loans/${l.id}`}
                 className="flex items-center justify-between rounded-md border border-line px-4 py-4 hover:bg-black/[0.02]"
               >
-                <span className="font-medium">{l.property_address ?? l.loan_number}</span>
+                <span className="font-medium">{l.property_address ?? l.loan_number ?? l.opportunity_number}</span>
                 <span className="text-muted">{stageLabel(l.stage)}</span>
               </Link>
             </li>

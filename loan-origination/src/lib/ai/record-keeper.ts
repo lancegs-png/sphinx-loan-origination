@@ -27,7 +27,7 @@ export async function answerLoanQuestion(opts: {
   const { data: loan } = await supabase
     .from("loans")
     .select(
-      "loan_number,stage,status,loan_type,loan_amount,property_address,borrower_name,closing_date,program_id",
+      "loan_number,opportunity_number,stage,status,loan_type,loan_amount,property_address,borrower_name,closing_date,program_id",
     )
     .eq("id", loanId)
     .single();
@@ -113,7 +113,8 @@ function money(n: number | null): string {
 
 function buildContext(args: {
   loan: {
-    loan_number: string;
+    loan_number: string | null;
+    opportunity_number: string;
     stage: string;
     status: string;
     loan_type: string | null;
@@ -131,7 +132,11 @@ function buildContext(args: {
 
   const lines: string[] = [];
   lines.push("=== LOAN RECORD ===");
-  lines.push(`Loan number: ${loan.loan_number}`);
+  lines.push(
+    loan.loan_number
+      ? `Loan number: ${loan.loan_number}`
+      : `Opportunity number: ${loan.opportunity_number} (loan number assigned once the term sheet is signed)`,
+  );
   lines.push(`Stage: ${stageLabel(loan.stage)}`);
   lines.push(`Status: ${loan.status}`);
   lines.push(`Loan type: ${loan.loan_type ?? "unknown"}`);

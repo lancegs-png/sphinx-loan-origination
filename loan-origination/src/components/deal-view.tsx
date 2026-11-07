@@ -52,7 +52,10 @@ export function DealView({
         </div>
         <div className="mt-3 flex flex-wrap items-baseline gap-x-6 gap-y-1">
           <span className="text-lg font-semibold">
-            {loan.property_address ?? loan.loan_number}
+            {loan.property_address ?? loan.loan_number ?? loan.opportunity_number}
+          </span>
+          <span className="text-muted">
+            {loan.loan_number ?? `${loan.opportunity_number} (opportunity)`}
           </span>
           <span className="text-muted">{loan.loan_type ?? "—"}</span>
           <span className="text-muted">

@@ -35,7 +35,7 @@ export async function buildTemplateData(
 ): Promise<Record<string, string>> {
   const { data: loan } = await supabase
     .from("loans")
-    .select("loan_number,property_address")
+    .select("loan_number,opportunity_number,property_address")
     .eq("id", loanId)
     .single();
   const fv = await loadFieldValues(supabase, loanId);
@@ -64,6 +64,7 @@ export async function buildTemplateData(
     out[k] = fmt(k, cell.current);
   }
   out.loan_number = loan?.loan_number ?? "";
+  out.opportunity_number = loan?.opportunity_number ?? "";
   if (!out.property_address && loan?.property_address) out.property_address = loan.property_address;
 
   // Property addresses (repeat group `property`, up to 30). The "Re:" header shows the

@@ -57,7 +57,7 @@ export async function assembleTermSheetData(
 ): Promise<{ data: TermSheetData; loanNumber: string } | null> {
   const { data: loan } = await supabase
     .from("loans")
-    .select("loan_number,property_address,borrower_name,loan_amount,custom_fields")
+    .select("loan_number,opportunity_number,property_address,borrower_name,loan_amount,custom_fields")
     .eq("id", id)
     .single();
   if (!loan) return null;
@@ -109,5 +109,5 @@ export async function assembleTermSheetData(
         ? { name: sig.signed_by, dateStr: new Date(sig.signed_at).toLocaleDateString("en-US") }
         : null,
   };
-  return { data, loanNumber: loan.loan_number };
+  return { data, loanNumber: loan.loan_number ?? loan.opportunity_number };
 }

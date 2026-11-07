@@ -11,7 +11,8 @@ export type Profile = {
 
 export type Loan = {
   id: string;
-  loan_number: string;
+  loan_number: string | null; // assigned only once the term sheet is signed
+  opportunity_number: string; // assigned at intake, always present
   program_id: string | null;
   account_manager_id: string | null;
   stage: string;

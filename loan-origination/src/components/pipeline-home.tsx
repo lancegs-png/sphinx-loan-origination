@@ -38,7 +38,7 @@ export function PipelineHome({ loans, profile }: { loans: Loan[]; profile: Profi
           <table className="w-full border-collapse text-left">
             <thead>
               <tr className="border-b border-line text-sm text-muted">
-                <th className="py-3 pr-4 font-medium">Loan #</th>
+                <th className="py-3 pr-4 font-medium">Loan / Opp #</th>
                 <th className="py-3 pr-4 font-medium">Address</th>
                 <th className="py-3 pr-4 font-medium">Borrower</th>
                 <th className="py-3 pr-4 font-medium">Amount</th>
@@ -52,8 +52,13 @@ export function PipelineHome({ loans, profile }: { loans: Loan[]; profile: Profi
                 <tr key={l.id} className="border-b border-line hover:bg-black/[0.02]">
                   <td className="py-3 pr-4">
                     <Link href={`/loans/${l.id}`} className="font-medium underline">
-                      {l.loan_number}
+                      {l.loan_number ?? l.opportunity_number}
                     </Link>
+                    {!l.loan_number && (
+                      <span className="ml-1.5 rounded bg-black/5 px-1 py-0.5 text-[10px] uppercase tracking-wide text-muted">
+                        Opp
+                      </span>
+                    )}
                   </td>
                   <td className="py-3 pr-4">{l.property_address ?? "—"}</td>
                   <td className="py-3 pr-4">{l.borrower_name ?? "—"}</td>

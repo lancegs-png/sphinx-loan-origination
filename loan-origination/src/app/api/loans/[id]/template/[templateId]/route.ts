@@ -33,16 +33,21 @@ export async function GET(
   } = await supabase.auth.getUser();
   if (!user) return new Response("Unauthorized", { status: 401 });
 
-  const { data: loan } = await supabase.from("loans").select("loan_number,property_address").eq("id", id).single();
+  const { data: loan } = await supabase
+    .from("loans")
+    .select("loan_number,opportunity_number,property_address")
+    .eq("id", id)
+    .single();
   if (!loan) return new Response("Not found", { status: 404 });
-  const street = (loan.property_address || loan.loan_number).split(",")[0].trim();
+  const ref = loan.loan_number ?? loan.opportunity_number;
+  const street = (loan.property_address || ref).split(",")[0].trim();
 
   // Data tape: one row per property, exact Data Tape Map columns, blanks stay blank.
   if (def.id === "data_tape") {
     const fv = await loadFieldValues(supabase, id);
     const cur = (key: string, idx = 1) => fv[idx > 1 ? `${key}#${idx}` : key]?.current;
     const company = await loadCompanyConfig(createServiceRoleClient());
-    const csv = buildDataTapeCsv({ cur, loanNumber: loan.loan_number, seller: company.seller });
+    const csv = buildDataTapeCsv({ cur, loanNumber: ref, seller: company.seller });
     return new Response(csv, {
       headers: {
         "Content-Type": "text/csv; charset=utf-8",
