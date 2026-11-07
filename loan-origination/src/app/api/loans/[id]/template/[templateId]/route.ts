@@ -1,14 +1,17 @@
 import { createClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
-import { assembleTermSheetData } from "@/lib/term-sheet/data";
-import { renderTermSheetPdf } from "@/lib/term-sheet/document";
 import { loadFieldValues } from "@/lib/fields";
 import { loadCompanyConfig } from "@/lib/company";
 import { buildDataTapeCsv } from "@/lib/templates/data-tape";
 import { buildTemplateData, fillDocx } from "@/lib/templates/docx";
 import { TEMPLATES } from "@/lib/templates/registry";
 
-const DOCX_TEMPLATES = new Set(["ach_form", "first_payment_letter", "assignment_allonge"]);
+const DOCX_TEMPLATES = new Set([
+  "dscr_loi",
+  "ach_form",
+  "first_payment_letter",
+  "assignment_allonge",
+]);
 const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
 export const runtime = "nodejs";
@@ -60,15 +63,5 @@ export async function GET(
     });
   }
 
-  // DSCR LOI. (Served as PDF; the LOI .docx is not yet tagged.)
-  const assembled = await assembleTermSheetData(supabase, id);
-  if (!assembled) return new Response("Not found", { status: 404 });
-  const pdf = await renderTermSheetPdf(assembled.data);
-  return new Response(Buffer.from(pdf), {
-    headers: {
-      "Content-Type": "application/pdf",
-      "Content-Disposition": `inline; filename="${def.name} - ${street}.pdf"`,
-      "Cache-Control": "no-store",
-    },
-  });
+  return new Response("Template not available", { status: 404 });
 }
