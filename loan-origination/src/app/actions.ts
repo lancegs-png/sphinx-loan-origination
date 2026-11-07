@@ -381,6 +381,7 @@ export async function signTermSheet(loanId: string): Promise<{ ok: boolean; erro
   const h = await headers();
   const ip = (h.get("x-forwarded-for")?.split(",")[0] || h.get("x-real-ip") || "unknown").trim();
   const name = profile?.full_name || profile?.email || "Signer";
+  const email = profile?.email || user.email || "";
   const now = new Date();
 
   const admin = createServiceRoleClient();
@@ -395,7 +396,7 @@ export async function signTermSheet(loanId: string): Promise<{ ok: boolean; erro
 
   const custom = {
     ...((loan.custom_fields as Record<string, unknown>) ?? {}),
-    term_sheet: { signed_by: name, signed_at: now.toISOString(), ip },
+    term_sheet: { signed_by: name, signed_at: now.toISOString(), ip, email },
   };
   await admin.from("loans").update({ custom_fields: custom }).eq("id", loanId);
 

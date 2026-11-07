@@ -29,7 +29,13 @@ export type TermSheetData = {
   lenderName: string;
   lenderSigner: string;
   lenderSignerTitle: string;
-  signature?: { name: string; dateStr: string } | null;
+  signature?: {
+    name: string;
+    dateStr: string; // "11/7/2026"
+    dateTimeStr: string; // "November 7, 2026 at 2:34:12 PM EST"
+    email: string;
+    ip: string;
+  } | null;
 };
 
 const PROP_TYPE: Record<string, string> = {
@@ -91,7 +97,9 @@ export async function assembleTermSheetData(
 
   const cf = (loan.custom_fields ?? {}) as Record<string, unknown>;
   const q = (cf.quote ?? {}) as Record<string, unknown>;
-  const sig = cf.term_sheet as { signed_by?: string; signed_at?: string } | undefined;
+  const sig = cf.term_sheet as
+    | { signed_by?: string; signed_at?: string; ip?: string; email?: string }
+    | undefined;
 
   const fv = await loadFieldValues(supabase, id);
   const cur = (k: string): unknown => fv[k]?.current ?? cf[k];
@@ -133,7 +141,16 @@ export async function assembleTermSheetData(
     lenderSignerTitle: company.lender.signer_title,
     signature:
       sig?.signed_by && sig.signed_at
-        ? { name: sig.signed_by, dateStr: new Date(sig.signed_at).toLocaleDateString("en-US") }
+        ? {
+            name: sig.signed_by,
+            dateStr: new Date(sig.signed_at).toLocaleDateString("en-US"),
+            dateTimeStr: new Date(sig.signed_at).toLocaleString("en-US", {
+              dateStyle: "long",
+              timeStyle: "long",
+            }),
+            email: sig.email ?? "",
+            ip: sig.ip ?? "",
+          }
         : null,
   };
   return { data, loanNumber: loan.loan_number ?? loan.opportunity_number };
@@ -178,10 +195,22 @@ export async function buildLoiTemplateData(
   gapFill("principal_and_interest", dollars(d.monthlyPI));
   gapFill("origination_fee_pct", d.originationPct != null ? `${d.originationPct}%` : "");
 
-  // Signature fields are filled when present; harmless if the template has no such tag.
+  // Signature + authentication-certificate fields. Filled only on a signed copy; on an
+  // unsigned copy the acceptance lines stay blank (for wet signing) and the `signed`
+  // flag is empty, so the template's authentication section ({{#signed}}…{{/signed}})
+  // renders not at all.
   if (d.signature) {
+    base.signed = "1";
     base.signature_name = d.signature.name;
+    base.signature_sig = `/s/ ${d.signature.name}`;
     base.signature_date = d.signature.dateStr;
+    base.auth_doc = `Letter of Intent — ${assembled.loanNumber}`;
+    base.auth_signer = d.signature.name;
+    base.auth_email = d.signature.email;
+    base.auth_datetime = d.signature.dateTimeStr;
+    base.auth_ip = d.signature.ip;
+  } else {
+    base.signed = "";
   }
 
   return { map: base, loanNumber: assembled.loanNumber, signed: !!d.signature };
