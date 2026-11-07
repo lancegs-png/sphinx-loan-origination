@@ -160,9 +160,6 @@ export async function intakeTurn(
   if (fields.borrower_name) updates.borrower_name = fields.borrower_name;
   if (typeof fields.loan_amount === "number") updates.loan_amount = fields.loan_amount;
   if (fields.property_address) updates.property_address = fields.property_address;
-  if (fields.expected_close_date && /^\d{4}-\d{2}-\d{2}$/.test(fields.expected_close_date)) {
-    updates.expected_close_date = fields.expected_close_date;
-  }
   if (fields.loan_type_key) {
     updates.loan_type = PROGRAM_LABEL[fields.loan_type_key];
     const { data: prog } = await supabase
@@ -185,6 +182,9 @@ export async function intakeTurn(
   // calculated fields. P17 replaces this with a dictionary-native record_intake schema.
   const intakeRaw: Record<string, unknown> = { ...(fields.quote_fields ?? {}) };
   if (fields.borrower_name) intakeRaw.borrower_name = fields.borrower_name;
+  if (fields.expected_close_date && /^\d{4}-\d{2}-\d{2}$/.test(fields.expected_close_date)) {
+    intakeRaw.closing_date = fields.expected_close_date;
+  }
   if (fields.loan_type_key) {
     intakeRaw.loan_program = PROGRAM_LABEL[fields.loan_type_key] ?? fields.loan_type_key.toUpperCase();
   }

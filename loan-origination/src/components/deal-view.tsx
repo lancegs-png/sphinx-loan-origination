@@ -46,7 +46,7 @@ export function DealView({
           <span className="text-muted">
             {loan.loan_amount != null ? `$${loan.loan_amount.toLocaleString()}` : "—"}
           </span>
-          <span className="text-muted">Close: {loan.expected_close_date ?? "—"}</span>
+          <span className="text-muted">Close: {loan.closing_date ?? "—"}</span>
         </div>
         <div className="mt-4">
           <StageBar currentStage={loan.stage} />

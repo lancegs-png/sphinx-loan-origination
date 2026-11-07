@@ -60,7 +60,7 @@ export function PipelineHome({ loans, profile }: { loans: Loan[]; profile: Profi
                   <td className="py-3 pr-4">{money(l.loan_amount)}</td>
                   <td className="py-3 pr-4">{l.loan_type ?? "—"}</td>
                   <td className="py-3 pr-4">{stageLabel(l.stage)}</td>
-                  <td className="py-3 pr-4">{l.expected_close_date ?? "—"}</td>
+                  <td className="py-3 pr-4">{l.closing_date ?? "—"}</td>
                 </tr>
               ))}
             </tbody>

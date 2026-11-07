@@ -17,10 +17,11 @@ export type Loan = {
   stage: string;
   status: string;
   loan_type: string | null;
+  loan_program: string | null;
   loan_amount: number | null;
   property_address: string | null;
   borrower_name: string | null;
-  expected_close_date: string | null;
+  closing_date: string | null;
   custom_fields?: Record<string, unknown> | null;
   created_at: string;
 };

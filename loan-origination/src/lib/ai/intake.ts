@@ -215,7 +215,7 @@ type LoanRecord = {
   loan_amount: number | null;
   property_address: string | null;
   borrower_name: string | null;
-  expected_close_date: string | null;
+  closing_date: string | null;
 };
 
 /**
@@ -233,7 +233,7 @@ export async function runIntakeTurn(opts: {
 
   const { data: loan } = await supabase
     .from("loans")
-    .select("loan_type,loan_amount,property_address,borrower_name,expected_close_date")
+    .select("loan_type,loan_amount,property_address,borrower_name,closing_date")
     .eq("id", loanId)
     .single();
   if (!loan) return null;
@@ -328,6 +328,6 @@ function capturedSummary(loan: LoanRecord): string {
     `Loan type: ${f(loan.loan_type)}`,
     `Loan amount: ${f(loan.loan_amount)}`,
     `Property: ${f(loan.property_address)}`,
-    `Expected closing: ${f(loan.expected_close_date)}`,
+    `Expected closing: ${f(loan.closing_date)}`,
   ].join("\n");
 }

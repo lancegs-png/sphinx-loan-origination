@@ -27,7 +27,7 @@ export async function answerLoanQuestion(opts: {
   const { data: loan } = await supabase
     .from("loans")
     .select(
-      "loan_number,stage,status,loan_type,loan_amount,property_address,borrower_name,expected_close_date,program_id",
+      "loan_number,stage,status,loan_type,loan_amount,property_address,borrower_name,closing_date,program_id",
     )
     .eq("id", loanId)
     .single();
@@ -120,7 +120,7 @@ function buildContext(args: {
     loan_amount: number | null;
     property_address: string | null;
     borrower_name: string | null;
-    expected_close_date: string | null;
+    closing_date: string | null;
   };
   program: { name: string; public_info: string | null } | null;
   messages: ConvMessage[];
@@ -138,7 +138,7 @@ function buildContext(args: {
   lines.push(`Loan amount: ${money(loan.loan_amount)}`);
   lines.push(`Property: ${loan.property_address ?? "unknown"}`);
   lines.push(`Borrower: ${loan.borrower_name ?? "unknown"}`);
-  lines.push(`Expected closing: ${loan.expected_close_date ?? "unknown"}`);
+  lines.push(`Expected closing: ${loan.closing_date ?? "unknown"}`);
 
   if (program) {
     lines.push("");
