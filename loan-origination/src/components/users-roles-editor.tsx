@@ -77,40 +77,38 @@ export function UsersRolesEditor({
   }
 
   return (
-    <main className="mx-auto max-w-3xl px-6 py-10">
-      <header className="mb-8 flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">Users &amp; Roles</h1>
-          <p className="text-muted">Everyone with access, and their type.</p>
-        </div>
-        <Link href="/admin" className="rounded-md border border-line px-4 py-2.5 font-medium">
-          ← Admin
-        </Link>
+    <main className="mx-auto max-w-5xl px-6 py-9 lg:px-10">
+      <Link href="/admin" className="text-sm text-muted transition-colors hover:text-fg">
+        ← Settings
+      </Link>
+      <header className="mb-8 mt-3">
+        <h1 className="text-[1.75rem] font-bold text-fg">Users &amp; Roles</h1>
+        <p className="mt-1 text-sm text-muted">Everyone with access, and their type.</p>
       </header>
 
       {/* Add user */}
-      <section className="mb-8 rounded-md border border-line p-5">
-        <h2 className="mb-4 text-lg font-semibold">Add a user</h2>
+      <section className="card mb-8 p-5">
+        <h2 className="mb-4 text-lg font-semibold text-fg">Add a user</h2>
         <div className="flex flex-col gap-3">
           <input
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="Email"
             type="email"
-            className="rounded-md border border-line px-3 py-2.5 text-base"
+            className="field w-full"
           />
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Full name (optional)"
-            className="rounded-md border border-line px-3 py-2.5 text-base"
+            className="field w-full"
           />
           <label className="flex items-center gap-2 text-sm">
             Type
             <select
               value={newType}
               onChange={(e) => setNewType(e.target.value as UserType)}
-              className="rounded-md border border-line px-2 py-1.5"
+              className="field select w-auto"
             >
               {TYPES.map((t) => (
                 <option key={t.value} value={t.value}>
@@ -119,15 +117,11 @@ export function UsersRolesEditor({
               ))}
             </select>
           </label>
-          <button
-            onClick={add}
-            disabled={busy}
-            className="self-start rounded-md bg-fg px-5 py-2.5 font-medium text-white disabled:opacity-50"
-          >
+          <button onClick={add} disabled={busy} className="btn btn-primary self-start">
             {busy ? "Creating…" : "Add user"}
           </button>
           {tempPassword && (
-            <p className="text-sm">
+            <p className="text-sm text-fg">
               Temporary password (share once): <span className="font-mono font-medium">{tempPassword}</span>
             </p>
           )}
@@ -140,7 +134,7 @@ export function UsersRolesEditor({
         <select
           value={filter}
           onChange={(e) => setFilter(e.target.value as "all" | UserType)}
-          className="rounded-md border border-line px-2 py-1.5"
+          className="field select w-auto"
         >
           <option value="all">All</option>
           {TYPES.map((t) => (
@@ -168,7 +162,7 @@ export function UsersRolesEditor({
         ))}
       </ul>
 
-      {msg && <p className="mt-4 text-sm">{msg}</p>}
+      {msg && <p className="mt-4 text-sm text-muted">{msg}</p>}
     </main>
   );
 }
@@ -193,13 +187,13 @@ function UserRowEditor({
   }
 
   return (
-    <li className="flex flex-col gap-2 rounded-md border border-line p-4">
+    <li className="card flex flex-col gap-2 p-4">
       <div className="flex items-center justify-between">
         <div>
-          <div className="font-medium">{user.full_name ?? user.email}</div>
+          <div className="font-medium text-fg">{user.full_name ?? user.email}</div>
           <div className="text-sm text-muted">{user.email}</div>
         </div>
-        {isSelf && <span className="text-xs text-muted">you</span>}
+        {isSelf && <span className="chip">you</span>}
       </div>
       <div className="flex flex-wrap items-center gap-3 text-sm">
         <label className="flex items-center gap-1.5">
@@ -207,7 +201,7 @@ function UserRowEditor({
           <select
             value={type}
             onChange={(e) => setType(e.target.value as UserType)}
-            className="rounded-md border border-line px-2 py-1"
+            className="field select w-auto"
           >
             {TYPES.map((t) => (
               <option key={t.value} value={t.value}>
@@ -216,11 +210,7 @@ function UserRowEditor({
             ))}
           </select>
         </label>
-        <button
-          onClick={save}
-          disabled={busy}
-          className="rounded-md border border-line px-4 py-1.5 font-medium disabled:opacity-50"
-        >
+        <button onClick={save} disabled={busy} className="btn btn-secondary text-sm">
           {busy ? "Saving…" : "Save"}
         </button>
       </div>

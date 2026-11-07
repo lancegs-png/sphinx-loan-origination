@@ -24,7 +24,7 @@ export function IntakeFormCard({
   }
 
   return (
-    <form onSubmit={submit} className="mt-2 flex flex-col gap-3 rounded-md border border-line p-4">
+    <form onSubmit={submit} className="card mt-2.5 flex flex-col gap-3 p-4">
       {form.fields.map((f) => (
         <label key={f.key} className="flex flex-col gap-1 text-sm">
           <span className="font-medium">
@@ -36,7 +36,7 @@ export function IntakeFormCard({
               value={values[f.key] ?? ""}
               onChange={(e) => set(f.key, e.target.value)}
               disabled={disabled}
-              className="rounded-md border border-line px-3 py-2 text-base"
+              className="field select w-full"
             >
               <option value="">Select…</option>
               {(f.options ?? []).map((o) => (
@@ -57,16 +57,12 @@ export function IntakeFormCard({
               value={values[f.key] ?? ""}
               onChange={(e) => set(f.key, e.target.value)}
               disabled={disabled}
-              className="rounded-md border border-line px-3 py-2 text-base"
+              className="field w-full"
             />
           )}
         </label>
       ))}
-      <button
-        type="submit"
-        disabled={disabled}
-        className="self-start rounded-md bg-fg px-4 py-2 font-medium text-white disabled:opacity-50"
-      >
+      <button type="submit" disabled={disabled} className="btn btn-primary self-start">
         Submit
       </button>
     </form>

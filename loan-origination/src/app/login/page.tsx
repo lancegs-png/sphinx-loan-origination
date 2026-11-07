@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { SphinxLogo } from "@/components/brand";
 
 type Mode = "magic" | "password";
 
@@ -28,7 +29,7 @@ export default function LoginPage() {
       setMessage(
         error
           ? `Couldn’t send link: ${error.message}`
-          : "Link Emailed! Check your inbox for the sign-in link.",
+          : "Link emailed. Check your inbox for the sign-in link.",
       );
     } catch (err) {
       setMessage(
@@ -64,89 +65,103 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center gap-8 px-5">
-      <div>
-        <h1 className="text-2xl font-semibold">Loan Origination</h1>
-        <p className="mt-1 text-muted">Sign in to continue</p>
-      </div>
+    <main className="grid min-h-screen place-items-center px-5 py-10">
+      <div className="w-full max-w-sm">
+        <div className="mb-8 flex flex-col items-center text-center">
+          <SphinxLogo height={66} />
+          <h1 className="mt-7 text-2xl font-bold text-fg">Sign in</h1>
+          <p className="mt-1 text-sm text-muted">Private loan origination</p>
+        </div>
 
-      {mode === "magic" ? (
-        <form onSubmit={sendMagicLink} className="flex flex-col gap-4">
-          <label className="flex flex-col gap-2">
-            <span className="text-sm font-medium">Email</span>
-            <input
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="rounded-md border border-line px-3 py-2.5 text-base"
-              placeholder="you@example.com"
-            />
-          </label>
-          <button
-            type="submit"
-            disabled={busy}
-            className="rounded-md bg-fg px-4 py-2.5 font-medium text-white disabled:opacity-50"
-          >
-            {busy ? "Sending…" : "Email me a sign-in link"}
-          </button>
-        </form>
-      ) : (
-        <form className="flex flex-col gap-4">
-          <label className="flex flex-col gap-2">
-            <span className="text-sm font-medium">Email</span>
-            <input
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="rounded-md border border-line px-3 py-2.5 text-base"
-            />
-          </label>
-          <label className="flex flex-col gap-2">
-            <span className="text-sm font-medium">Password</span>
-            <input
-              type="password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="rounded-md border border-line px-3 py-2.5 text-base"
-            />
-          </label>
-          <div className="flex gap-3">
-            <button
-              onClick={(e) => passwordAuth(e, "in")}
-              disabled={busy}
-              className="flex-1 rounded-md bg-fg px-4 py-2.5 font-medium text-white disabled:opacity-50"
-            >
-              Sign in
-            </button>
-            <button
-              onClick={(e) => passwordAuth(e, "up")}
-              disabled={busy}
-              className="flex-1 rounded-md border border-line px-4 py-2.5 font-medium"
-            >
-              Sign up
-            </button>
+        <div className="card p-6">
+          {mode === "magic" ? (
+            <form onSubmit={sendMagicLink} className="flex flex-col gap-4">
+              <label className="flex flex-col gap-1.5">
+                <span className="text-sm font-medium text-fg">Email</span>
+                <input
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="field w-full"
+                  placeholder="you@example.com"
+                />
+              </label>
+              <button type="submit" disabled={busy} className="btn btn-primary w-full">
+                {busy ? "Sending…" : "Email me a sign-in link"}
+              </button>
+            </form>
+          ) : (
+            <form className="flex flex-col gap-4">
+              <label className="flex flex-col gap-1.5">
+                <span className="text-sm font-medium text-fg">Email</span>
+                <input
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="field w-full"
+                  placeholder="you@example.com"
+                />
+              </label>
+              <label className="flex flex-col gap-1.5">
+                <span className="text-sm font-medium text-fg">Password</span>
+                <input
+                  type="password"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="field w-full"
+                />
+              </label>
+              <div className="flex gap-3">
+                <button
+                  onClick={(e) => passwordAuth(e, "in")}
+                  disabled={busy}
+                  className="btn btn-primary flex-1"
+                >
+                  Sign in
+                </button>
+                <button
+                  onClick={(e) => passwordAuth(e, "up")}
+                  disabled={busy}
+                  className="btn btn-secondary flex-1"
+                >
+                  Sign up
+                </button>
+              </div>
+            </form>
+          )}
+
+          <div className="my-4 flex items-center gap-3 text-xs text-faint">
+            <span className="h-px flex-1 bg-line" />
+            or
+            <span className="h-px flex-1 bg-line" />
           </div>
-        </form>
-      )}
 
-      <button onClick={google} className="rounded-md border border-line px-4 py-2.5 font-medium">
-        Continue with Google
-      </button>
+          <button onClick={google} className="btn btn-secondary w-full">
+            Continue with Google
+          </button>
+        </div>
 
-      <button
-        onClick={() => {
-          setMessage(null);
-          setMode(mode === "magic" ? "password" : "magic");
-        }}
-        className="text-sm text-muted underline"
-      >
-        {mode === "magic" ? "Use a password instead" : "Use a magic link instead"}
-      </button>
+        <div className="mt-5 text-center">
+          <button
+            onClick={() => {
+              setMessage(null);
+              setMode(mode === "magic" ? "password" : "magic");
+            }}
+            className="text-sm text-muted underline decoration-line underline-offset-2 hover:text-fg"
+          >
+            {mode === "magic" ? "Use a password instead" : "Use a magic link instead"}
+          </button>
+        </div>
 
-      {message && <p className="text-sm">{message}</p>}
+        {message && (
+          <p className="mt-4 rounded-lg border border-line bg-surface px-4 py-3 text-center text-sm text-fg">
+            {message}
+          </p>
+        )}
+      </div>
     </main>
   );
 }

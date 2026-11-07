@@ -171,79 +171,88 @@ export function Chat({
   }
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col">
+    <section className="flex min-h-0 flex-1 flex-col bg-bg">
       <div className="flex-1 space-y-5 overflow-y-auto px-6 py-6">
-        {messages.map((m, idx) => (
-          <div key={m.id}>
-            <div className="mb-1 flex items-baseline gap-2 text-sm text-muted">
-              <span className="font-semibold text-fg">{roleLabel(m)}</span>
-              {m.is_internal && (
-                <span className="rounded border border-line px-1.5 text-xs">Internal</span>
-              )}
-              <span>{new Date(m.created_at).toLocaleString()}</span>
-            </div>
-            <p className="whitespace-pre-wrap">{m.body}</p>
-            {m.payload?.doc && (
-              <a
-                href={m.payload.doc.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-2 inline-flex max-w-full items-center gap-3 rounded-md border border-line px-3 py-2.5 hover:bg-black/5"
-              >
-                <span aria-hidden className="text-xl leading-none">
-                  📄
+        {messages.map((m, idx) => {
+          const isAi = m.sender_kind === "ai";
+          return (
+            <div key={m.id}>
+              <div className="mb-1 flex items-baseline gap-2 text-xs">
+                <span className={`text-sm font-semibold ${isAi ? "text-navy" : "text-fg"}`}>
+                  {roleLabel(m)}
                 </span>
-                <span className="flex min-w-0 flex-col">
-                  <span className="truncate font-medium">{m.payload.doc.title}</span>
-                  <span className="text-xs text-muted">PDF · click to open in a new tab</span>
-                </span>
-              </a>
-            )}
-            {m.payload?.form && intakeMode && idx === messages.length - 1 && (
-              <IntakeFormCard
-                form={m.payload.form}
-                disabled={busy || aiBusy}
-                onSubmit={(values) => submitForm(m.payload!.form!.fields, values)}
-              />
-            )}
-            {m.payload?.proceed && idx === messages.length - 1 && (
-              <div className="mt-2 flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => proceedQuote(true)}
-                  disabled={busy || aiBusy}
-                  className="rounded-md bg-fg px-4 py-2 font-medium text-white disabled:opacity-50"
-                >
-                  Yes, proceed
-                </button>
-                <button
-                  type="button"
-                  onClick={() => proceedQuote(false)}
-                  disabled={busy || aiBusy}
-                  className="rounded-md border border-line px-4 py-2 font-medium disabled:opacity-50"
-                >
-                  Not now
-                </button>
+                {m.is_internal && (
+                  <span className="status-pill status-update">Internal</span>
+                )}
+                <span className="text-faint">{new Date(m.created_at).toLocaleString()}</span>
               </div>
-            )}
-            {m.payload?.sign && idx === messages.length - 1 && (
-              <button
-                type="button"
-                onClick={signTS}
-                disabled={busy || aiBusy}
-                className="mt-2 rounded-md bg-fg px-4 py-2 font-medium text-white disabled:opacity-50"
-              >
-                Sign term sheet
-              </button>
-            )}
-          </div>
-        ))}
+              <p className="whitespace-pre-wrap text-[0.9375rem] leading-relaxed text-fg">{m.body}</p>
+              {m.payload?.doc && (
+                <a
+                  href={m.payload.doc.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="card mt-2.5 inline-flex max-w-full items-center gap-3 px-3.5 py-3 transition-colors hover:bg-surface-2"
+                >
+                  <span aria-hidden className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-navy/[0.06] text-navy">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                      <path d="M14 2v6h6" />
+                    </svg>
+                  </span>
+                  <span className="flex min-w-0 flex-col">
+                    <span className="truncate font-medium text-fg">{m.payload.doc.title}</span>
+                    <span className="text-xs text-muted">PDF · opens in a new tab</span>
+                  </span>
+                </a>
+              )}
+              {m.payload?.form && intakeMode && idx === messages.length - 1 && (
+                <IntakeFormCard
+                  form={m.payload.form}
+                  disabled={busy || aiBusy}
+                  onSubmit={(values) => submitForm(m.payload!.form!.fields, values)}
+                />
+              )}
+              {m.payload?.proceed && idx === messages.length - 1 && (
+                <div className="mt-3 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => proceedQuote(true)}
+                    disabled={busy || aiBusy}
+                    className="btn btn-primary"
+                  >
+                    Yes, proceed
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => proceedQuote(false)}
+                    disabled={busy || aiBusy}
+                    className="btn btn-secondary"
+                  >
+                    Not now
+                  </button>
+                </div>
+              )}
+              {m.payload?.sign && idx === messages.length - 1 && (
+                <button
+                  type="button"
+                  onClick={signTS}
+                  disabled={busy || aiBusy}
+                  className="btn btn-gold mt-3"
+                >
+                  Sign term sheet
+                </button>
+              )}
+            </div>
+          );
+        })}
         <div ref={endRef} />
       </div>
 
-      <form onSubmit={send} className="border-t border-line px-6 py-4">
+      <form onSubmit={send} className="border-t border-line bg-surface px-6 py-4">
         {aiBusy && (
-          <p className="mb-2 text-sm text-muted">
+          <p className="mb-2 flex items-center gap-2 text-sm text-muted">
+            <span aria-hidden className="h-1.5 w-1.5 animate-pulse rounded-full bg-gold" />
             {intakeMode ? "Setting up the loan…" : "AI System is thinking…"}
           </p>
         )}
@@ -253,16 +262,17 @@ export function Chat({
           </p>
         )}
         {isLender && !intakeMode && (
-          <label className="mb-2 flex items-center gap-2 text-sm text-muted">
+          <label className="mb-2 flex w-fit items-center gap-2 text-sm text-muted">
             <input
               type="checkbox"
               checked={internal}
               onChange={(e) => setInternal(e.target.checked)}
+              className="accent-navy"
             />
             Internal (team only)
           </label>
         )}
-        <div className="flex items-end gap-3">
+        <div className="flex items-end gap-2">
           <textarea
             value={body}
             onChange={(e) => setBody(e.target.value)}
@@ -271,23 +281,19 @@ export function Chat({
             }}
             rows={2}
             placeholder={intakeMode ? "Answer to continue setup…" : "Message the team, or ask the AI…"}
-            className="min-h-11 flex-1 resize-none rounded-md border border-line px-3 py-2.5 text-base"
+            className="field min-h-11 flex-1 resize-none"
           />
           {!intakeMode && (
             <button
               type="button"
               onClick={ask}
               disabled={aiBusy || busy}
-              className="rounded-md border border-line px-4 py-2.5 font-medium disabled:opacity-50"
+              className="btn btn-secondary"
             >
               Ask AI
             </button>
           )}
-          <button
-            type="submit"
-            disabled={busy || aiBusy}
-            className="rounded-md bg-fg px-5 py-2.5 font-medium text-white disabled:opacity-50"
-          >
+          <button type="submit" disabled={busy || aiBusy} className="btn btn-primary">
             Send
           </button>
         </div>

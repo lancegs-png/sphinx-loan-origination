@@ -54,33 +54,41 @@ export function Sidebar({
   ];
 
   return (
-    <aside className="flex w-full flex-col border-l border-line md:w-80">
-      <div className="flex border-b border-line">
+    <aside className="flex w-full flex-col border-l border-line bg-surface md:w-80">
+      <div className="flex gap-1 overflow-x-auto border-b border-line px-2">
         {tabs
           .filter((t) => !t.lenderOnly || isLender)
-          .map((t) => (
-            <button
-              key={t.key}
-              onClick={() => setTab(t.key)}
-              className="flex-1 px-3 py-3 text-sm font-medium"
-              style={{
-                color: tab === t.key ? "var(--fg)" : "var(--muted)",
-                borderBottom: tab === t.key ? "2px solid var(--fg)" : "2px solid transparent",
-              }}
-            >
-              {t.label}
-            </button>
-          ))}
+          .map((t) => {
+            const active = tab === t.key;
+            return (
+              <button
+                key={t.key}
+                onClick={() => setTab(t.key)}
+                aria-current={active ? "true" : undefined}
+                className={`whitespace-nowrap border-b-2 px-2.5 py-3 text-sm font-medium transition-colors ${
+                  active
+                    ? "border-gold text-navy"
+                    : "border-transparent text-muted hover:text-fg"
+                }`}
+              >
+                {t.label}
+              </button>
+            );
+          })}
       </div>
 
       <div className="flex-1 overflow-y-auto p-5 text-sm">
         {tab === "people" && (
-          <ul className="space-y-4">
+          <ul className="space-y-3">
             {participants.map((p) => (
-              <li key={p.user_id}>
-                <div className="font-medium">{p.profiles?.full_name ?? p.profiles?.email ?? "—"}</div>
-                <div className="text-muted">{participantRoleLabel(p.participant_role)}</div>
-                {p.profiles?.email && <div className="text-muted">{p.profiles.email}</div>}
+              <li key={p.user_id} className="card p-3.5">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-semibold text-fg">
+                    {p.profiles?.full_name ?? p.profiles?.email ?? "—"}
+                  </span>
+                  <span className="chip">{participantRoleLabel(p.participant_role)}</span>
+                </div>
+                {p.profiles?.email && <div className="mt-1 text-muted">{p.profiles.email}</div>}
                 {p.profiles?.phone && <div className="text-muted">{p.profiles.phone}</div>}
               </li>
             ))}
@@ -119,12 +127,12 @@ export function Sidebar({
         )}
 
         {tab === "notes" && isLender && (
-          <ul className="space-y-4">
+          <ul className="space-y-3">
             {internalNotes.length === 0 && <p className="text-muted">No internal notes.</p>}
             {internalNotes.map((n) => (
-              <li key={n.id}>
-                <p className="whitespace-pre-wrap">{n.body}</p>
-                <div className="text-muted">{new Date(n.created_at).toLocaleString()}</div>
+              <li key={n.id} className="card p-3.5">
+                <p className="whitespace-pre-wrap text-fg">{n.body}</p>
+                <div className="mt-1.5 text-xs text-faint">{new Date(n.created_at).toLocaleString()}</div>
               </li>
             ))}
           </ul>

@@ -1,6 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { getSessionProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import { AppShell, type NavItem } from "@/components/app-shell";
 import { ProgramConfigEditor } from "@/components/program-config-editor";
 import type { QuoteField } from "@/lib/ai/intake";
 
@@ -28,13 +29,20 @@ export default async function ProgramConfigPage({
     .eq("program_id", id)
     .single();
 
+  const nav: NavItem[] = [
+    { href: "/", label: "Pipeline", icon: "pipeline", match: "exact" },
+    { href: "/admin", label: "Settings", icon: "settings", match: "prefix" },
+  ];
+
   return (
-    <ProgramConfigEditor
-      programId={id}
-      programName={program.name}
-      initialQuoteFields={Array.isArray(cfg?.quote_fields) ? (cfg!.quote_fields as QuoteField[]) : []}
-      initialStyle={cfg?.intake_style ?? ""}
-      initialExamples={cfg?.intake_examples ?? ""}
-    />
+    <AppShell email={session.profile?.email ?? ""} nav={nav}>
+      <ProgramConfigEditor
+        programId={id}
+        programName={program.name}
+        initialQuoteFields={Array.isArray(cfg?.quote_fields) ? (cfg!.quote_fields as QuoteField[]) : []}
+        initialStyle={cfg?.intake_style ?? ""}
+        initialExamples={cfg?.intake_examples ?? ""}
+      />
+    </AppShell>
   );
 }

@@ -56,30 +56,28 @@ export function ProgramConfigEditor({
   }
 
   return (
-    <main className="mx-auto max-w-3xl px-6 py-10">
-      <header className="mb-8 flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">{programName}</h1>
-          <p className="text-muted">AI intake configuration</p>
-        </div>
-        <Link href="/admin" className="rounded-md border border-line px-4 py-2.5 font-medium">
-          ← Programs
-        </Link>
+    <main className="mx-auto max-w-5xl px-6 py-9 lg:px-10">
+      <Link href="/admin" className="text-sm text-muted transition-colors hover:text-fg">
+        ← Settings
+      </Link>
+      <header className="mb-6 mt-3">
+        <h1 className="text-[1.75rem] font-bold text-fg">{programName}</h1>
+        <p className="mt-1 text-sm text-muted">AI intake configuration</p>
       </header>
 
-      <nav className="mb-8 flex gap-4 text-sm">
-        <span className="font-medium">AI Intake</span>
-        <Link href={`/admin/programs/${programId}/checklist`} className="text-muted underline">
+      <nav className="mb-8 flex flex-wrap gap-2 text-sm">
+        <span className="chip bg-navy/[0.06] text-navy">AI Intake</span>
+        <Link href={`/admin/programs/${programId}/checklist`} className="chip transition-colors hover:text-fg">
           Checklist
         </Link>
-        <Link href={`/admin/programs/${programId}/pricing`} className="text-muted underline">
+        <Link href={`/admin/programs/${programId}/pricing`} className="chip transition-colors hover:text-fg">
           Pricing
         </Link>
       </nav>
 
       {/* Quote fields */}
       <section className="mb-10">
-        <h2 className="mb-1 text-lg font-semibold">Quote inputs</h2>
+        <h2 className="mb-1 text-lg font-semibold text-fg">Quote inputs</h2>
         <p className="mb-4 text-sm text-muted">
           What the AI must gather for an initial quote on this program.
         </p>
@@ -87,16 +85,16 @@ export function ProgramConfigEditor({
         <ul className="mb-4 flex flex-col gap-2">
           {fields.length === 0 && <li className="text-sm text-muted">No quote fields yet.</li>}
           {fields.map((f, i) => (
-            <li key={f.key} className="rounded-md border border-line px-3 py-2.5">
+            <li key={f.key} className="card px-3 py-2.5">
               <div className="flex items-center justify-between">
-                <span>
+                <span className="font-medium text-fg">
                   {f.label} <span className="text-muted">({f.key})</span>
                 </span>
                 <button
                   onClick={() => setFields((arr) => arr.filter((_, idx) => idx !== i))}
-                  className="text-sm text-muted underline"
+                  className="btn btn-ghost text-sm text-[var(--status-outstanding)]"
                 >
-                  remove
+                  Remove
                 </button>
               </div>
               <div className="mt-2 flex flex-wrap items-center gap-3 text-sm">
@@ -117,7 +115,7 @@ export function ProgramConfigEditor({
                         ),
                       )
                     }
-                    className="rounded-md border border-line px-2 py-1"
+                    className="field select w-auto"
                   >
                     <option value="text">Text</option>
                     <option value="number">Number</option>
@@ -145,7 +143,7 @@ export function ProgramConfigEditor({
                       )
                     }
                     placeholder="Options, comma-separated"
-                    className="flex-1 rounded-md border border-line px-2 py-1"
+                    className="field flex-1"
                   />
                 )}
                 <label className="flex items-center gap-1.5 text-muted">
@@ -176,9 +174,9 @@ export function ProgramConfigEditor({
               }
             }}
             placeholder="e.g. Monthly rent"
-            className="flex-1 rounded-md border border-line px-3 py-2.5 text-base"
+            className="field flex-1"
           />
-          <button onClick={addField} className="rounded-md border border-line px-4 py-2.5 font-medium">
+          <button onClick={addField} className="btn btn-secondary">
             Add field
           </button>
         </div>
@@ -186,20 +184,20 @@ export function ProgramConfigEditor({
 
       {/* Intake style */}
       <section className="mb-10">
-        <h2 className="mb-1 text-lg font-semibold">Intake style</h2>
+        <h2 className="mb-1 text-lg font-semibold text-fg">Intake style</h2>
         <p className="mb-4 text-sm text-muted">Voice, tone, and guardrails for how the AI asks.</p>
         <textarea
           value={style}
           onChange={(e) => setStyle(e.target.value)}
           rows={5}
           placeholder="e.g. Warm and concise. Ask one question at a time. Never quote a rate. Always confirm the exact entity name."
-          className="w-full resize-y rounded-md border border-line px-3 py-2.5 text-base"
+          className="field w-full resize-y"
         />
       </section>
 
       {/* Example conversations */}
       <section className="mb-10">
-        <h2 className="mb-1 text-lg font-semibold">Example conversations</h2>
+        <h2 className="mb-1 text-lg font-semibold text-fg">Example conversations</h2>
         <p className="mb-4 text-sm text-muted">
           Paste ideal intake exchanges; the AI mirrors this phrasing and flow.
         </p>
@@ -208,19 +206,15 @@ export function ProgramConfigEditor({
           onChange={(e) => setExamples(e.target.value)}
           rows={8}
           placeholder={"AI: Are you the borrower or an originator?\nUser: Originator, John at ABC.\nAI: Great — who's the borrower?"}
-          className="w-full resize-y rounded-md border border-line px-3 py-2.5 text-base"
+          className="field w-full resize-y"
         />
       </section>
 
       <div className="flex items-center gap-4">
-        <button
-          onClick={save}
-          disabled={busy}
-          className="rounded-md bg-fg px-5 py-2.5 font-medium text-white disabled:opacity-50"
-        >
+        <button onClick={save} disabled={busy} className="btn btn-primary">
           {busy ? "Saving…" : "Save"}
         </button>
-        {msg && <span className="text-sm">{msg}</span>}
+        {msg && <span className="text-sm text-muted">{msg}</span>}
       </div>
     </main>
   );

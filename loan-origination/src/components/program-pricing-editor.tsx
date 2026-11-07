@@ -84,45 +84,43 @@ export function ProgramPricingEditor({
   }
 
   return (
-    <main className="mx-auto max-w-3xl px-6 py-10">
-      <header className="mb-8 flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">{programName}</h1>
-          <p className="text-muted">Pricing</p>
-        </div>
-        <Link
-          href={`/admin/programs/${programId}`}
-          className="rounded-md border border-line px-4 py-2.5 font-medium"
-        >
-          ← Program
-        </Link>
+    <main className="mx-auto max-w-5xl px-6 py-9 lg:px-10">
+      <Link
+        href={`/admin/programs/${programId}`}
+        className="text-sm text-muted transition-colors hover:text-fg"
+      >
+        ← {programName}
+      </Link>
+      <header className="mb-8 mt-3">
+        <h1 className="text-[1.75rem] font-bold text-fg">{programName}</h1>
+        <p className="mt-1 text-sm text-muted">Pricing</p>
       </header>
 
       <div className="mb-6 flex flex-wrap gap-4 text-sm">
         <label className="flex items-center gap-1.5">
-          <input type="radio" checked={mode === "model"} onChange={() => setMode("model")} />
+          <input type="radio" checked={mode === "model"} onChange={() => setMode("model")} className="accent-navy" />
           Pricing model
         </label>
         <label className="flex items-center gap-1.5">
-          <input type="radio" checked={mode === "guidelines"} onChange={() => setMode("guidelines")} />
+          <input type="radio" checked={mode === "guidelines"} onChange={() => setMode("guidelines")} className="accent-navy" />
           Pasted guidelines
         </label>
         <label className="flex items-center gap-1.5">
-          <input type="radio" checked={mode === "document"} onChange={() => setMode("document")} />
+          <input type="radio" checked={mode === "document"} onChange={() => setMode("document")} className="accent-navy" />
           Upload document
         </label>
       </div>
 
       {mode === "model" && (
-        <section className="mb-8 flex flex-col gap-3">
+        <section className="card mb-8 flex flex-col gap-3 p-5">
           {MODEL_FIELDS.map((f) => (
             <label key={f.key} className="flex items-center justify-between gap-4">
-              <span className="text-sm">{f.label}</span>
+              <span className="text-sm text-fg">{f.label}</span>
               <input
                 type="number"
                 value={model[f.key]}
                 onChange={(e) => setModel((m) => ({ ...m, [f.key]: e.target.value }))}
-                className="w-48 rounded-md border border-line px-3 py-2 text-base"
+                className="field w-48 text-right tabular-nums"
               />
             </label>
           ))}
@@ -136,27 +134,23 @@ export function ProgramPricingEditor({
             onChange={(e) => setGuidelines(e.target.value)}
             rows={10}
             placeholder="Paste the program's pricing guidelines here — the lending team (and later the AI) use these to produce a quote."
-            className="w-full resize-y rounded-md border border-line px-3 py-2.5 text-base"
+            className="field w-full resize-y"
           />
         </section>
       )}
 
       {mode === "document" && (
-        <section className="mb-8 flex flex-col gap-3">
+        <section className="card mb-8 flex flex-col gap-3 p-5">
           <p className="text-sm text-muted">
             Upload a rate sheet or pricing document (PDF, spreadsheet, etc.).
           </p>
           {currentFile && (
-            <p className="text-sm">
+            <p className="text-sm text-fg">
               Current file: <span className="font-medium">{currentFile}</span>
             </p>
           )}
-          <input ref={fileRef} type="file" className="text-sm" />
-          <button
-            onClick={uploadDoc}
-            disabled={busy}
-            className="self-start rounded-md bg-fg px-5 py-2.5 font-medium text-white disabled:opacity-50"
-          >
+          <input ref={fileRef} type="file" className="text-sm text-muted" />
+          <button onClick={uploadDoc} disabled={busy} className="btn btn-primary self-start">
             {busy ? "Uploading…" : "Upload"}
           </button>
         </section>
@@ -164,18 +158,14 @@ export function ProgramPricingEditor({
 
       {mode !== "document" && (
         <div className="flex items-center gap-4">
-          <button
-            onClick={save}
-            disabled={busy}
-            className="rounded-md bg-fg px-5 py-2.5 font-medium text-white disabled:opacity-50"
-          >
+          <button onClick={save} disabled={busy} className="btn btn-primary">
             {busy ? "Saving…" : "Save pricing"}
           </button>
-          {msg && <span className="text-sm">{msg}</span>}
+          {msg && <span className="text-sm text-muted">{msg}</span>}
         </div>
       )}
 
-      {mode === "document" && msg && <p className="text-sm">{msg}</p>}
+      {mode === "document" && msg && <p className="text-sm text-muted">{msg}</p>}
     </main>
   );
 }

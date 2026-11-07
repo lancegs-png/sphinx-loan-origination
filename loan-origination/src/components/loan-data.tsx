@@ -191,7 +191,7 @@ function Input({
             setValue(e.target.value);
             onCommit(e.target.value);
           }}
-          className="rounded-md border border-line px-2 py-1.5 text-sm disabled:opacity-50"
+          className="field select w-full text-sm disabled:opacity-50"
         >
           <option value="">—</option>
           {def.options.map((o) => (
@@ -209,7 +209,7 @@ function Input({
           onBlur={() => {
             if (value !== baseline) onCommit(value);
           }}
-          className="rounded-md border border-line px-2 py-1.5 text-sm disabled:opacity-50"
+          className="field w-full text-sm disabled:opacity-50"
         />
       )}
     </label>
@@ -230,15 +230,11 @@ function SheetSync({ loanId }: { loanId: string }) {
   }
   return (
     <div className="flex flex-wrap items-center gap-2 text-xs">
-      <button
-        onClick={sync}
-        disabled={busy}
-        className="rounded-md border border-line px-3 py-1.5 font-medium disabled:opacity-50"
-      >
+      <button onClick={sync} disabled={busy} className="btn btn-secondary text-xs">
         {busy ? "Syncing…" : "Sync to Google Sheet"}
       </button>
       {url && (
-        <a href={url} target="_blank" rel="noopener noreferrer" className="underline text-muted">
+        <a href={url} target="_blank" rel="noopener noreferrer" className="text-navy underline underline-offset-2">
           Open sheet
         </a>
       )}
@@ -250,8 +246,8 @@ function SheetSync({ loanId }: { loanId: string }) {
 function Badge({ children, tone }: { children: ReactNode; tone?: "lock" }) {
   return (
     <span
-      className="rounded border border-line px-1 text-[10px] uppercase tracking-wide text-muted"
-      style={tone === "lock" ? { color: "var(--status-outstanding)" } : undefined}
+      className="chip text-[10px] uppercase tracking-wide"
+      style={tone === "lock" ? { color: "var(--status-outstanding)", background: "var(--status-outstanding-bg)" } : undefined}
     >
       {children}
     </span>

@@ -28,7 +28,7 @@ export function TemplatesPanel({
         return (
           <div
             key={t.id}
-            className="rounded-md border p-3"
+            className="card p-3.5"
             style={{
               borderColor: ready ? "var(--status-approved)" : "var(--line)",
               background: ready ? "color-mix(in srgb, var(--status-approved) 9%, transparent)" : undefined,
@@ -42,7 +42,7 @@ export function TemplatesPanel({
                     href={`/api/loans/${loanId}/template/${t.id}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="rounded-md border border-line px-2.5 py-1 text-xs font-medium hover:bg-black/5"
+                    className="btn btn-secondary px-2.5 py-1 text-xs"
                   >
                     {t.format === "xlsx" ? "CSV" : t.format === "docx" ? "Word" : "Download"}
                   </a>
@@ -51,7 +51,7 @@ export function TemplatesPanel({
                       href={`/api/loans/${loanId}/template/${t.id}?format=pdf`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="rounded-md border border-line px-2.5 py-1 text-xs font-medium hover:bg-black/5"
+                      className="btn btn-secondary px-2.5 py-1 text-xs"
                     >
                       PDF
                     </a>

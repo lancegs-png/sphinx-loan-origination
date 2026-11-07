@@ -1,6 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { getSessionProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import { AppShell, type NavItem } from "@/components/app-shell";
 import { ProgramChecklistEditor } from "@/components/program-checklist-editor";
 
 export default async function ChecklistPage({ params }: { params: Promise<{ id: string }> }) {
@@ -26,20 +27,27 @@ export default async function ChecklistPage({ params }: { params: Promise<{ id: 
     .select("document_type_id,required,assignee,naming_override,review_rules_override")
     .eq("program_id", id);
 
+  const nav: NavItem[] = [
+    { href: "/", label: "Pipeline", icon: "pipeline", match: "exact" },
+    { href: "/admin", label: "Settings", icon: "settings", match: "prefix" },
+  ];
+
   return (
-    <ProgramChecklistEditor
-      programId={id}
-      programName={program.name}
-      docTypes={(docTypes as { id: string; name: string }[]) ?? []}
-      items={
-        (items as {
-          document_type_id: string;
-          required: boolean;
-          assignee: string;
-          naming_override: string | null;
-          review_rules_override: string | null;
-        }[]) ?? []
-      }
-    />
+    <AppShell email={session.profile?.email ?? ""} nav={nav}>
+      <ProgramChecklistEditor
+        programId={id}
+        programName={program.name}
+        docTypes={(docTypes as { id: string; name: string }[]) ?? []}
+        items={
+          (items as {
+            document_type_id: string;
+            required: boolean;
+            assignee: string;
+            naming_override: string | null;
+            review_rules_override: string | null;
+          }[]) ?? []
+        }
+      />
+    </AppShell>
   );
 }

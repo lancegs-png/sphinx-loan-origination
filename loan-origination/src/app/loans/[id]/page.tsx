@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { loadFieldValues } from "@/lib/fields";
 import { loadLoanChecklist } from "@/lib/checklist";
 import { DealView } from "@/components/deal-view";
-import type { ChecklistItem, FieldDef, InternalNote, Loan, Message, Participant } from "@/lib/types";
+import type { FieldDef, InternalNote, Loan, Message, Participant } from "@/lib/types";
 
 const STAGE_ORDER = [
   "intake", "pre_qualification", "quote_term_sheet", "processing",

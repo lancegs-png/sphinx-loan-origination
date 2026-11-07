@@ -133,7 +133,7 @@ export function QuotePanel({
       <input
         value={String(f[k])}
         onChange={(e) => set(k, e.target.value as never)}
-        className="rounded-md border border-line px-2 py-1.5"
+        className="field w-full"
       />
     </label>
   );
@@ -145,7 +145,7 @@ export function QuotePanel({
       {Num("Origination fee (%)", "origPct")}
       <label className="flex flex-col gap-1">
         <span className="text-muted">Prepay</span>
-        <select value={f.prepay} onChange={(e) => set("prepay", e.target.value as PrepayTerm)} className="rounded-md border border-line px-2 py-1.5">
+        <select value={f.prepay} onChange={(e) => set("prepay", e.target.value as PrepayTerm)} className="field select w-full">
           {["5yr", "4yr", "3yr", "2yr", "1yr", "none"].map((p) => (
             <option key={p} value={p}>{p}</option>
           ))}
@@ -153,7 +153,7 @@ export function QuotePanel({
       </label>
       <label className="flex flex-col gap-1">
         <span className="text-muted">Lock (days)</span>
-        <select value={f.lockDays} onChange={(e) => set("lockDays", Number(e.target.value) as 30 | 45 | 60)} className="rounded-md border border-line px-2 py-1.5">
+        <select value={f.lockDays} onChange={(e) => set("lockDays", Number(e.target.value) as 30 | 45 | 60)} className="field select w-full">
           {[30, 45, 60].map((d) => <option key={d} value={d}>{d}</option>)}
         </select>
       </label>
@@ -162,7 +162,7 @@ export function QuotePanel({
       {Num("FICO", "fico")}
       <label className="flex flex-col gap-1">
         <span className="text-muted">Purpose</span>
-        <select value={f.purpose} onChange={(e) => set("purpose", e.target.value as Purpose)} className="rounded-md border border-line px-2 py-1.5">
+        <select value={f.purpose} onChange={(e) => set("purpose", e.target.value as Purpose)} className="field select w-full">
           <option value="purchase">Purchase</option>
           <option value="rt">Refinance — Rate/Term</option>
           <option value="co">Refinance — Cash-Out</option>
@@ -170,7 +170,7 @@ export function QuotePanel({
       </label>
       <label className="flex flex-col gap-1">
         <span className="text-muted">Property type</span>
-        <select value={f.property} onChange={(e) => set("property", e.target.value as PropertyKind)} className="rounded-md border border-line px-2 py-1.5">
+        <select value={f.property} onChange={(e) => set("property", e.target.value as PropertyKind)} className="field select w-full">
           <option value="sfr">SFR / PUD / Townhome</option>
           <option value="2-4">2-4 Unit</option>
           <option value="condo">Condo</option>
@@ -183,21 +183,21 @@ export function QuotePanel({
       {Num("Annual insurance", "annualInsurance")}
       {Num("Annual HOA", "annualHOA")}
       <label className="flex items-center gap-2 text-muted">
-        <input type="checkbox" checked={f.interestOnly} onChange={(e) => set("interestOnly", e.target.checked)} /> Interest only
+        <input type="checkbox" className="accent-navy" checked={f.interestOnly} onChange={(e) => set("interestOnly", e.target.checked)} /> Interest only
       </label>
       <label className="flex items-center gap-2 text-muted">
-        <input type="checkbox" checked={f.foreignNational} onChange={(e) => set("foreignNational", e.target.checked)} /> Foreign national
+        <input type="checkbox" className="accent-navy" checked={f.foreignNational} onChange={(e) => set("foreignNational", e.target.checked)} /> Foreign national
       </label>
       <label className="flex items-center gap-2 text-muted">
-        <input type="checkbox" checked={f.firstTimeInvestor} onChange={(e) => set("firstTimeInvestor", e.target.checked)} /> First-time investor
+        <input type="checkbox" className="accent-navy" checked={f.firstTimeInvestor} onChange={(e) => set("firstTimeInvestor", e.target.checked)} /> First-time investor
       </label>
 
-      <button onClick={calc} disabled={busy} className="rounded-md bg-fg px-4 py-2 font-medium text-white disabled:opacity-50">
+      <button onClick={calc} disabled={busy} className="btn btn-primary w-full">
         {busy ? "Pricing…" : "Calculate quote"}
       </button>
 
       {result && (
-        <div className="mt-2 flex flex-col gap-2 rounded-md border border-line p-3">
+        <div className="card mt-2 flex flex-col gap-2 p-3.5">
           <div className="grid grid-cols-2 gap-x-3 gap-y-1">
             <Metric label="LTV" value={`${result.ltv}%`} />
             <Metric label="DSCR" value={String(result.dscr)} />
@@ -231,8 +231,7 @@ export function QuotePanel({
             Price &amp; points are internal — the posted summary shows only borrower-facing terms.
           </p>
           <div
-            className="status-pill self-start"
-            style={{ color: result.eligible ? "var(--status-approved)" : "var(--status-outstanding)" }}
+            className={`status-pill self-start ${result.eligible ? "status-approved" : "status-outstanding"}`}
           >
             {result.eligible ? "Eligible" : "Review required"}
           </div>
@@ -241,7 +240,7 @@ export function QuotePanel({
               {result.issues.map((x, i) => <li key={i}>{x}</li>)}
             </ul>
           )}
-          <button onClick={post} disabled={busy} className="mt-1 self-start rounded-md border border-line px-3 py-1.5 font-medium disabled:opacity-50">
+          <button onClick={post} disabled={busy} className="btn btn-secondary mt-1 self-start text-sm">
             Post summary to chat
           </button>
         </div>

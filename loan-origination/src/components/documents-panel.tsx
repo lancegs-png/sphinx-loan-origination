@@ -55,11 +55,7 @@ export function DocumentsPanel({
           No checklist yet. It&apos;s created from the program checklist when the loan reaches Processing.
         </p>
         {canGenerate && (
-          <button
-            onClick={generate}
-            disabled={busy}
-            className="self-start rounded-md bg-fg px-4 py-2 font-medium text-white disabled:opacity-50"
-          >
+          <button onClick={generate} disabled={busy} className="btn btn-primary self-start">
             {busy ? "Creating…" : "Generate checklist"}
           </button>
         )}
@@ -91,7 +87,7 @@ export function DocumentsPanel({
                       <select
                         value={r.status}
                         onChange={(e) => setStatus(r.id, e.target.value)}
-                        className="rounded-md border border-line px-1.5 py-1 text-xs"
+                        className="field select shrink-0 py-1.5 text-xs font-medium"
                         style={{ color: STATUS_COLOR[r.status] }}
                       >
                         {STATUSES.map((s) => (

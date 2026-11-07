@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { getSessionProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import { AppShell, type NavItem } from "@/components/app-shell";
 
 export default async function AdminHome() {
   const session = await getSessionProfile();
@@ -14,51 +15,69 @@ export default async function AdminHome() {
     .select("id,name,loan_type_key")
     .order("name");
 
+  const nav: NavItem[] = [
+    { href: "/", label: "Pipeline", icon: "pipeline", match: "exact" },
+    { href: "/admin", label: "Settings", icon: "settings", match: "prefix" },
+  ];
+
+  const library = [
+    { href: "/admin/intake", label: "Global Intake", hint: "Opening questions, style, examples" },
+    { href: "/admin/document-types", label: "Document Types", hint: "Shared library for checklists" },
+    { href: "/admin/users", label: "Users & Roles", hint: "Lending team membership and roles" },
+  ];
+
   return (
-    <main className="mx-auto max-w-3xl px-6 py-10">
-      <header className="mb-8 flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">Admin · Loan Programs</h1>
-          <p className="text-muted">Configure the AI intake per program</p>
+    <AppShell email={session.profile?.email ?? ""} nav={nav}>
+      <main className="mx-auto max-w-5xl px-6 py-9 lg:px-10">
+        <div className="mb-8">
+          <h1 className="text-[1.75rem] font-bold text-fg">Settings</h1>
+          <p className="mt-1 text-sm text-muted">Configure the AI intake, libraries, and your team.</p>
         </div>
-        <Link href="/" className="rounded-md border border-line px-4 py-2.5 font-medium">
-          ← Pipeline
-        </Link>
-      </header>
 
-      <h2 className="mb-3 text-sm font-medium text-muted">Library &amp; settings</h2>
-      <ul className="mb-8 flex flex-col gap-3">
-        {[
-          { href: "/admin/intake", label: "Global Intake", hint: "Opening questions, style, examples" },
-          { href: "/admin/document-types", label: "Document Types", hint: "Shared library for checklists" },
-          { href: "/admin/users", label: "Users & Roles", hint: "Lending team membership and roles" },
-        ].map((l) => (
-          <li key={l.href}>
-            <Link
-              href={l.href}
-              className="flex items-center justify-between rounded-md border border-line px-4 py-4 hover:bg-black/[0.02]"
-            >
-              <span className="font-medium">{l.label}</span>
-              <span className="text-muted">{l.hint} →</span>
-            </Link>
-          </li>
-        ))}
-      </ul>
+        <section className="mb-10">
+          <h2 className="mb-3 text-sm font-semibold text-fg">Library &amp; settings</h2>
+          <div className="card overflow-hidden">
+            {library.map((l) => (
+              <Link
+                key={l.href}
+                href={l.href}
+                className="flex items-center justify-between gap-4 border-b border-line px-5 py-4 last:border-0 transition-colors hover:bg-surface-2/60"
+              >
+                <span className="font-semibold text-fg">{l.label}</span>
+                <span className="flex items-center gap-2 text-sm text-muted">
+                  {l.hint}
+                  <span aria-hidden className="text-faint">→</span>
+                </span>
+              </Link>
+            ))}
+          </div>
+        </section>
 
-      <h2 className="mb-3 text-sm font-medium text-muted">Loan programs</h2>
-      <ul className="flex flex-col gap-3">
-        {(programs ?? []).map((p: { id: string; name: string }) => (
-          <li key={p.id}>
-            <Link
-              href={`/admin/programs/${p.id}`}
-              className="flex items-center justify-between rounded-md border border-line px-4 py-4 hover:bg-black/[0.02]"
-            >
-              <span className="font-medium">{p.name}</span>
-              <span className="text-muted">Configure →</span>
-            </Link>
-          </li>
-        ))}
-      </ul>
-    </main>
+        <section>
+          <h2 className="mb-3 text-sm font-semibold text-fg">Loan programs</h2>
+          {(programs ?? []).length === 0 ? (
+            <div className="card grid place-items-center px-6 py-14 text-center">
+              <p className="text-sm text-muted">No loan programs yet.</p>
+            </div>
+          ) : (
+            <div className="card overflow-hidden">
+              {(programs ?? []).map((p: { id: string; name: string }) => (
+                <Link
+                  key={p.id}
+                  href={`/admin/programs/${p.id}`}
+                  className="flex items-center justify-between gap-4 border-b border-line px-5 py-4 last:border-0 transition-colors hover:bg-surface-2/60"
+                >
+                  <span className="font-semibold text-fg">{p.name}</span>
+                  <span className="flex items-center gap-2 text-sm text-muted">
+                    Configure
+                    <span aria-hidden className="text-faint">→</span>
+                  </span>
+                </Link>
+              ))}
+            </div>
+          )}
+        </section>
+      </main>
+    </AppShell>
   );
 }

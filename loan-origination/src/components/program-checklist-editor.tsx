@@ -69,24 +69,22 @@ export function ProgramChecklistEditor({
   }
 
   return (
-    <main className="mx-auto max-w-3xl px-6 py-10">
-      <header className="mb-8 flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">{programName}</h1>
-          <p className="text-muted">Required documents &amp; tasks</p>
-        </div>
-        <Link
-          href={`/admin/programs/${programId}`}
-          className="rounded-md border border-line px-4 py-2.5 font-medium"
-        >
-          ← Program
-        </Link>
+    <main className="mx-auto max-w-5xl px-6 py-9 lg:px-10">
+      <Link
+        href={`/admin/programs/${programId}`}
+        className="text-sm text-muted transition-colors hover:text-fg"
+      >
+        ← {programName}
+      </Link>
+      <header className="mb-8 mt-3">
+        <h1 className="text-[1.75rem] font-bold text-fg">{programName}</h1>
+        <p className="mt-1 text-sm text-muted">Required documents &amp; tasks</p>
       </header>
 
       {docTypes.length === 0 ? (
-        <p className="text-muted">
+        <p className="text-sm text-muted">
           No document types yet. Add some in{" "}
-          <Link href="/admin/document-types" className="underline">
+          <Link href="/admin/document-types" className="text-navy underline decoration-gold/50 underline-offset-2">
             Document Types
           </Link>{" "}
           first.
@@ -96,12 +94,13 @@ export function ProgramChecklistEditor({
           {docTypes.map((d) => {
             const r = rows[d.id];
             return (
-              <li key={d.id} className="rounded-md border border-line p-4">
-                <label className="flex items-center gap-2 font-medium">
+              <li key={d.id} className="card p-4">
+                <label className="flex items-center gap-2 font-medium text-fg">
                   <input
                     type="checkbox"
                     checked={r.included}
                     onChange={(e) => update(d.id, { included: e.target.checked })}
+                    className="accent-navy"
                   />
                   {d.name}
                 </label>
@@ -113,6 +112,7 @@ export function ProgramChecklistEditor({
                           type="checkbox"
                           checked={r.required}
                           onChange={(e) => update(d.id, { required: e.target.checked })}
+                          className="accent-navy"
                         />
                         required
                       </label>
@@ -123,7 +123,7 @@ export function ProgramChecklistEditor({
                           onChange={(e) =>
                             update(d.id, { assignee: e.target.value as RowState["assignee"] })
                           }
-                          className="rounded-md border border-line px-2 py-1"
+                          className="field select w-auto"
                         >
                           <option value="borrower">Borrower</option>
                           <option value="lending_team">Lending team</option>
@@ -134,14 +134,14 @@ export function ProgramChecklistEditor({
                       value={r.naming}
                       onChange={(e) => update(d.id, { naming: e.target.value })}
                       placeholder="Naming override (optional)"
-                      className="rounded-md border border-line px-3 py-2"
+                      className="field w-full"
                     />
                     <textarea
                       value={r.rules}
                       onChange={(e) => update(d.id, { rules: e.target.value })}
                       rows={2}
                       placeholder="AI review rules override (optional)"
-                      className="resize-y rounded-md border border-line px-3 py-2"
+                      className="field w-full resize-y"
                     />
                   </div>
                 )}
@@ -152,14 +152,10 @@ export function ProgramChecklistEditor({
       )}
 
       <div className="flex items-center gap-4">
-        <button
-          onClick={save}
-          disabled={busy}
-          className="rounded-md bg-fg px-5 py-2.5 font-medium text-white disabled:opacity-50"
-        >
+        <button onClick={save} disabled={busy} className="btn btn-primary">
           {busy ? "Saving…" : "Save checklist"}
         </button>
-        {msg && <span className="text-sm">{msg}</span>}
+        {msg && <span className="text-sm text-muted">{msg}</span>}
       </div>
     </main>
   );

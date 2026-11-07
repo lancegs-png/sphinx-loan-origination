@@ -47,57 +47,55 @@ export function DocumentTypesEditor({ initial }: { initial: DocType[] }) {
   }
 
   return (
-    <main className="mx-auto max-w-3xl px-6 py-10">
-      <header className="mb-8 flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">Document Types</h1>
-          <p className="text-muted">The shared library programs build their checklists from.</p>
-        </div>
-        <Link href="/admin" className="rounded-md border border-line px-4 py-2.5 font-medium">
-          ← Admin
-        </Link>
+    <main className="mx-auto max-w-5xl px-6 py-9 lg:px-10">
+      <Link href="/admin" className="text-sm text-muted transition-colors hover:text-fg">
+        ← Settings
+      </Link>
+      <header className="mb-8 mt-3">
+        <h1 className="text-[1.75rem] font-bold text-fg">Document Types</h1>
+        <p className="mt-1 text-sm text-muted">The shared library programs build their checklists from.</p>
       </header>
 
       <ul className="mb-10 flex flex-col gap-3">
-        {initial.length === 0 && <li className="text-muted">No document types yet.</li>}
+        {initial.length === 0 && (
+          <li className="card grid place-items-center px-6 py-14 text-center text-sm text-muted">
+            No document types yet.
+          </li>
+        )}
         {initial.map((d) => (
           <DocTypeRow key={d.id} doc={d} onSaved={() => router.refresh()} onRemove={() => remove(d.id)} />
         ))}
       </ul>
 
-      <section className="rounded-md border border-line p-5">
-        <h2 className="mb-4 text-lg font-semibold">Add a document type</h2>
+      <section className="card p-5">
+        <h2 className="mb-4 text-lg font-semibold text-fg">Add a document type</h2>
         <div className="flex flex-col gap-3">
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Name (e.g. Bank Statements)"
-            className="rounded-md border border-line px-3 py-2.5 text-base"
+            className="field w-full"
           />
           <input
             value={naming}
             onChange={(e) => setNaming(e.target.value)}
             placeholder="Default file naming (optional, e.g. {LoanNumber} Bank Statements)"
-            className="rounded-md border border-line px-3 py-2.5 text-base"
+            className="field w-full"
           />
           <textarea
             value={rules}
             onChange={(e) => setRules(e.target.value)}
             rows={3}
             placeholder="Default AI review rules (optional) — what to check on this document"
-            className="resize-y rounded-md border border-line px-3 py-2.5 text-base"
+            className="field w-full resize-y"
           />
-          <button
-            onClick={add}
-            disabled={busy}
-            className="self-start rounded-md bg-fg px-5 py-2.5 font-medium text-white disabled:opacity-50"
-          >
+          <button onClick={add} disabled={busy} className="btn btn-primary self-start">
             {busy ? "Adding…" : "Add"}
           </button>
         </div>
       </section>
 
-      {msg && <p className="mt-4 text-sm">{msg}</p>}
+      {msg && <p className="mt-4 text-sm text-muted">{msg}</p>}
     </main>
   );
 }
@@ -130,35 +128,31 @@ function DocTypeRow({
   }
 
   return (
-    <li className="flex flex-col gap-2 rounded-md border border-line p-4">
-      <div className="flex items-center justify-between">
+    <li className="card flex flex-col gap-2 p-4">
+      <div className="flex items-center gap-3">
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
-          className="flex-1 rounded-md border border-line px-3 py-2 text-base font-medium"
+          className="field w-full flex-1 font-medium"
         />
-        <button onClick={onRemove} className="ml-3 text-sm text-muted underline">
-          remove
+        <button onClick={onRemove} className="btn btn-ghost text-sm text-[var(--status-outstanding)]">
+          Remove
         </button>
       </div>
       <input
         value={naming}
         onChange={(e) => setNaming(e.target.value)}
         placeholder="Default file naming"
-        className="rounded-md border border-line px-3 py-2 text-sm"
+        className="field w-full"
       />
       <textarea
         value={rules}
         onChange={(e) => setRules(e.target.value)}
         rows={2}
         placeholder="Default AI review rules"
-        className="resize-y rounded-md border border-line px-3 py-2 text-sm"
+        className="field w-full resize-y"
       />
-      <button
-        onClick={save}
-        disabled={busy}
-        className="self-start rounded-md border border-line px-4 py-2 text-sm font-medium disabled:opacity-50"
-      >
+      <button onClick={save} disabled={busy} className="btn btn-secondary self-start text-sm">
         {busy ? "Saving…" : "Save"}
       </button>
     </li>
