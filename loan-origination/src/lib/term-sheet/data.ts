@@ -3,7 +3,34 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { loadFieldValues } from "@/lib/fields";
 import { loadCompanyConfig } from "@/lib/company";
-import type { TermSheetData } from "@/lib/term-sheet/document";
+import { buildTemplateData } from "@/lib/templates/docx";
+
+/** Everything the LOI / term sheet needs, gathered from the loan record. */
+export type TermSheetData = {
+  date: string;
+  greetingName: string; // "Hi {name},"
+  loanAmount: number;
+  fico: number | null;
+  interestRate: string; // "7.25%"
+  propertyValue: number | null;
+  loanProgram: string;
+  ltv: string; // "75.19%"
+  propertyType: string;
+  prepay: string; // label
+  loanTermMonths: number;
+  dscr: string;
+  loanPurpose: string;
+  loanType: string;
+  entity: string;
+  guarantor: string;
+  monthlyPI: number | null;
+  originationPct: string; // "1.00"
+  propertyAddress: string;
+  lenderName: string;
+  lenderSigner: string;
+  lenderSignerTitle: string;
+  signature?: { name: string; dateStr: string } | null;
+};
 
 const PROP_TYPE: Record<string, string> = {
   sfr: "Single Family Residence",
@@ -110,4 +137,52 @@ export async function assembleTermSheetData(
         : null,
   };
   return { data, loanNumber: loan.loan_number ?? loan.opportunity_number };
+}
+
+/**
+ * Tag map for the Word LOI template (dscr_loi.docx). Starts from the field-store
+ * template data, then gap-fills the transaction terms from the assembled term-sheet
+ * data (quoted terms + human-readable labels) wherever a field is blank — so the
+ * delivered Word document matches what the borrower was quoted. Existing field
+ * values are never overwritten.
+ */
+export async function buildLoiTemplateData(
+  client: SupabaseClient,
+  id: string,
+): Promise<{ map: Record<string, string>; loanNumber: string; signed: boolean } | null> {
+  const assembled = await assembleTermSheetData(client, id);
+  if (!assembled) return null;
+  const base = await buildTemplateData(client, id);
+  const d = assembled.data;
+
+  const dollars = (n: number | null): string =>
+    n == null ? "" : `$${Math.round(n).toLocaleString("en-US")}`;
+  const gapFill = (tag: string, value: string) => {
+    if ((!base[tag] || base[tag].trim() === "") && value && value !== "—") base[tag] = value;
+  };
+
+  gapFill("term_sheet_date", d.date);
+  gapFill("loan_amount", dollars(d.loanAmount));
+  gapFill("guarantor_fico", d.fico != null ? String(d.fico) : "");
+  gapFill("interest_rate", d.interestRate);
+  gapFill("as_is_value", dollars(d.propertyValue));
+  gapFill("loan_program", d.loanProgram);
+  gapFill("ltv", d.ltv);
+  gapFill("property_type", d.propertyType);
+  gapFill("prepay_type", d.prepay);
+  gapFill("loan_term_months", String(d.loanTermMonths));
+  gapFill("amortization_term_months", String(d.loanTermMonths));
+  gapFill("dscr", d.dscr);
+  gapFill("loan_purpose", d.loanPurpose);
+  gapFill("borrower_entity", d.entity);
+  gapFill("principal_and_interest", dollars(d.monthlyPI));
+  gapFill("origination_fee_pct", d.originationPct != null ? `${d.originationPct}%` : "");
+
+  // Signature fields are filled when present; harmless if the template has no such tag.
+  if (d.signature) {
+    base.signature_name = d.signature.name;
+    base.signature_date = d.signature.dateStr;
+  }
+
+  return { map: base, loanNumber: assembled.loanNumber, signed: !!d.signature };
 }
