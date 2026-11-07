@@ -1,6 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { getSessionProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import { loadFieldValues } from "@/lib/fields";
 import { DealView } from "@/components/deal-view";
 import type { FieldDef, InternalNote, Loan, Message, Participant } from "@/lib/types";
 
@@ -45,15 +46,11 @@ export default async function LoanPage({
 
   const { data: fieldDefs } = await supabase
     .from("field_definitions")
-    .select("key,label,section,type,options,lender_only,sort")
+    .select("key,label,section,type,options,lender_only,sort,verifiable,repeat_group,source,required_stage,calc_key")
     .order("sort");
 
-  // Trade values are lender-only (RLS returns nothing for borrowers).
-  const tradeValues: Record<string, unknown> = isLender
-    ? (((
-        await supabase.from("loan_trade").select("values").eq("loan_id", id).single()
-      ).data?.values as Record<string, unknown>) ?? {})
-    : {};
+  // Current field values (RLS filters lender-only fields for borrowers).
+  const fieldValues = await loadFieldValues(supabase, id);
 
   const parts = (participants as Participant[]) ?? [];
   const myRole =
@@ -71,7 +68,7 @@ export default async function LoanPage({
       isLender={isLender}
       intakeMode={(loan as Loan).stage === "intake"}
       fieldDefs={(fieldDefs as FieldDef[]) ?? []}
-      tradeValues={tradeValues}
+      fieldValues={fieldValues}
     />
   );
 }

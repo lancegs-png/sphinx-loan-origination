@@ -1,107 +1,76 @@
 "use client";
 
-import { useState } from "react";
-import { saveLoanField } from "@/app/actions";
-import type { FieldDef, Loan } from "@/lib/types";
+import { useState, type ReactNode } from "react";
+import { saveLoanField, setLoanFieldLock } from "@/app/actions";
+import type { FieldDef, FieldValues, Loan } from "@/lib/types";
 
-const CORE_KEYS = [
-  "loan_number",
-  "loan_type",
-  "loan_amount",
-  "property_address",
-  "borrower_name",
-  "expected_close_date",
-];
-
-const SECTION_ORDER = ["loan", "property", "borrower", "guarantor", "trade", "other"];
+const SECTION_ORDER = ["loan", "property", "borrower", "guarantor", "contact", "trade"];
 const SECTION_LABEL: Record<string, string> = {
   loan: "Loan",
   property: "Property",
   borrower: "Borrower",
   guarantor: "Guarantor",
+  contact: "Contacts",
   trade: "Trade",
-  other: "Other (captured)",
 };
+
+const str = (v: unknown) => (v == null ? "" : String(v));
 
 export function LoanData({
   loan,
   fieldDefs,
-  customFields,
-  tradeValues,
+  values,
   canEdit,
   isLender,
 }: {
   loan: Loan;
   fieldDefs: FieldDef[];
-  customFields: Record<string, unknown>;
-  tradeValues: Record<string, unknown>;
+  values: FieldValues;
   canEdit: boolean;
   isLender: boolean;
 }) {
   const [status, setStatus] = useState<string | null>(null);
 
-  const coreMap: Record<string, unknown> = {
-    loan_number: loan.loan_number,
-    loan_type: loan.loan_type,
-    loan_amount: loan.loan_amount,
-    property_address: loan.property_address,
-    borrower_name: loan.borrower_name,
-    expected_close_date: loan.expected_close_date,
-  };
+  // Hide trade/lender-only fields from non-lenders (RLS already omits their values).
+  const defs = fieldDefs.filter((d) => isLender || (d.section !== "trade" && !d.lender_only));
 
-  function valueFor(def: FieldDef): string {
-    let v: unknown;
-    if (CORE_KEYS.includes(def.key)) v = coreMap[def.key];
-    else if (def.section === "trade") v = tradeValues[def.key];
-    else v = customFields[def.key];
-    return v == null ? "" : String(v);
+  async function save(def: FieldDef, valueKind: "initial" | "verified", value: string) {
+    const res = await saveLoanField({
+      loanId: loan.id,
+      key: def.key,
+      type: def.type,
+      value,
+      valueKind,
+    });
+    setStatus(res.ok ? `Saved ${def.label}` : res.error ?? "Save failed");
   }
 
-  async function save(key: string, section: string, type: string, value: string, label: string) {
-    const res = await saveLoanField({ loanId: loan.id, key, section, type, value });
-    setStatus(res.ok ? `Saved ${label}` : res.error ?? "Save failed");
+  async function toggleLock(def: FieldDef, locked: boolean) {
+    const res = await setLoanFieldLock({ loanId: loan.id, key: def.key, locked });
+    setStatus(res.ok ? (locked ? `Locked ${def.label}` : `Unlocked ${def.label}`) : res.error ?? "Failed");
   }
-
-  // Dictionary fields the viewer can see (hide trade from non-lenders).
-  const defs = fieldDefs.filter((d) => isLender || d.section !== "trade");
-
-  // Captured custom_fields not covered by the dictionary → "other".
-  const dictKeys = new Set(fieldDefs.map((d) => d.key));
-  const otherKeys = Object.keys(customFields).filter((k) => !dictKeys.has(k) && !CORE_KEYS.includes(k));
 
   return (
     <div className="flex flex-col gap-6">
       {!canEdit && <p className="text-xs text-muted">Read-only</p>}
       {SECTION_ORDER.map((section) => {
         const inSection = defs.filter((d) => d.section === section).sort((a, b) => a.sort - b.sort);
-        const extra = section === "other" ? otherKeys : [];
-        if (inSection.length === 0 && extra.length === 0) return null;
+        if (inSection.length === 0) return null;
         return (
           <section key={section}>
             <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">
-              {SECTION_LABEL[section]}
+              {SECTION_LABEL[section] ?? section}
             </h3>
             <div className="flex flex-col gap-3">
               {inSection.map((def) => (
                 <FieldRow
                   key={def.key}
-                  label={def.label}
-                  type={def.type}
-                  options={def.options}
-                  initial={valueFor(def)}
-                  readOnly={!canEdit || def.key === "loan_number"}
-                  onSave={(v) => save(def.key, def.section, def.type, v, def.label)}
-                />
-              ))}
-              {extra.map((k) => (
-                <FieldRow
-                  key={k}
-                  label={prettyKey(k)}
-                  type="text"
-                  options={[]}
-                  initial={customFields[k] == null ? "" : String(customFields[k])}
-                  readOnly={!canEdit}
-                  onSave={(v) => save(k, "other", "text", v, prettyKey(k))}
+                  def={def}
+                  cell={values[def.key]}
+                  canEdit={canEdit}
+                  isLender={isLender}
+                  onSave={(kind, v) => save(def, kind, v)}
+                  onLock={(locked) => toggleLock(def, locked)}
                 />
               ))}
             </div>
@@ -114,51 +83,117 @@ export function LoanData({
 }
 
 function FieldRow({
-  label,
-  type,
-  options,
-  initial,
-  readOnly,
+  def,
+  cell,
+  canEdit,
+  isLender,
   onSave,
+  onLock,
 }: {
-  label: string;
-  type: FieldDef["type"];
-  options: string[];
-  initial: string;
-  readOnly: boolean;
-  onSave: (value: string) => void;
+  def: FieldDef;
+  cell: FieldValues[string] | undefined;
+  canEdit: boolean;
+  isLender: boolean;
+  onSave: (kind: "initial" | "verified", value: string) => void;
+  onLock: (locked: boolean) => void;
 }) {
-  const [value, setValue] = useState(initial);
+  const [initial, setInitial] = useState(str(cell?.initial));
+  const [verified, setVerified] = useState(str(cell?.verified));
+  const locked = cell?.locked ?? false;
+  const calculated = def.source === "calculated";
+  const current = str(cell?.current);
 
-  const commit = () => {
-    if (value !== initial) onSave(value);
-  };
-
-  if (readOnly) {
+  // Calculated or read-only viewer: show the current value only.
+  if (calculated || !canEdit) {
     return (
       <div>
-        <div className="text-muted">{label}</div>
-        <div className="font-medium">{value || "—"}</div>
+        <div className="flex items-center gap-2 text-muted">
+          {def.label}
+          {calculated && <Badge>auto</Badge>}
+        </div>
+        <div className="font-medium">{current || "—"}</div>
       </div>
     );
   }
 
-  const inputType = type === "date" ? "date" : type === "text" || type === "select" ? "text" : "number";
-
+  const editable = !locked;
   return (
-    <label className="flex flex-col gap-1">
-      <span className="text-muted">{label}</span>
-      {type === "select" ? (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center gap-2">
+        <span className="text-muted">{def.label}</span>
+        {def.verifiable && <Badge>verifiable</Badge>}
+        {locked && <Badge tone="lock">locked</Badge>}
+        {isLender && def.verifiable && (
+          <button
+            type="button"
+            onClick={() => onLock(!locked)}
+            className="ml-auto text-xs underline text-muted"
+          >
+            {locked ? "Unlock" : "Lock"}
+          </button>
+        )}
+      </div>
+
+      <div className={def.verifiable ? "grid grid-cols-2 gap-2" : ""}>
+        <Input
+          label={def.verifiable ? "Initial" : undefined}
+          def={def}
+          value={initial}
+          baseline={str(cell?.initial)}
+          setValue={setInitial}
+          disabled={!editable}
+          onCommit={(v) => onSave("initial", v)}
+        />
+        {def.verifiable && isLender && (
+          <Input
+            label="Verified"
+            def={def}
+            value={verified}
+            baseline={str(cell?.verified)}
+            setValue={setVerified}
+            disabled={!editable}
+            onCommit={(v) => onSave("verified", v)}
+          />
+        )}
+      </div>
+      {def.verifiable && <div className="text-xs text-muted">Current: {current || "—"}</div>}
+    </div>
+  );
+}
+
+function Input({
+  label,
+  def,
+  value,
+  baseline,
+  setValue,
+  disabled,
+  onCommit,
+}: {
+  label?: string;
+  def: FieldDef;
+  value: string;
+  baseline: string;
+  setValue: (v: string) => void;
+  disabled: boolean;
+  onCommit: (v: string) => void;
+}) {
+  const inputType = def.type === "date" ? "date" : def.type === "number" ? "number" : "text";
+  return (
+    <label className="flex flex-col gap-0.5">
+      {label && <span className="text-xs text-muted">{label}</span>}
+      {def.type === "select" ? (
         <select
           value={value}
+          disabled={disabled}
           onChange={(e) => {
             setValue(e.target.value);
-            if (e.target.value !== initial) onSave(e.target.value);
+            onCommit(e.target.value);
           }}
-          className="rounded-md border border-line px-2 py-1.5 text-sm"
+          className="rounded-md border border-line px-2 py-1.5 text-sm disabled:opacity-50"
         >
           <option value="">—</option>
-          {options.map((o) => (
+          {def.options.map((o) => (
             <option key={o} value={o}>
               {o}
             </option>
@@ -168,15 +203,25 @@ function FieldRow({
         <input
           type={inputType}
           value={value}
+          disabled={disabled}
           onChange={(e) => setValue(e.target.value)}
-          onBlur={commit}
-          className="rounded-md border border-line px-2 py-1.5 text-sm"
+          onBlur={() => {
+            if (value !== baseline) onCommit(value);
+          }}
+          className="rounded-md border border-line px-2 py-1.5 text-sm disabled:opacity-50"
         />
       )}
     </label>
   );
 }
 
-function prettyKey(k: string): string {
-  return k.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+function Badge({ children, tone }: { children: ReactNode; tone?: "lock" }) {
+  return (
+    <span
+      className="rounded border border-line px-1 text-[10px] uppercase tracking-wide text-muted"
+      style={tone === "lock" ? { color: "var(--status-outstanding)" } : undefined}
+    >
+      {children}
+    </span>
+  );
 }

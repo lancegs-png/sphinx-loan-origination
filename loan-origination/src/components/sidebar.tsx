@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { LoanData } from "./loan-data";
 import { QuotePanel } from "./quote-panel";
-import type { FieldDef, InternalNote, Loan, Participant } from "@/lib/types";
+import type { FieldDef, FieldValues, InternalNote, Loan, Participant } from "@/lib/types";
 
 type Tab = "people" | "documents" | "loan" | "quote" | "notes";
 
@@ -20,14 +20,14 @@ export function Sidebar({
   internalNotes,
   isLender,
   fieldDefs,
-  tradeValues,
+  fieldValues,
 }: {
   loan: Loan;
   participants: Participant[];
   internalNotes: InternalNote[];
   isLender: boolean;
   fieldDefs: FieldDef[];
-  tradeValues: Record<string, unknown>;
+  fieldValues: FieldValues;
 }) {
   const [tab, setTab] = useState<Tab>("people");
 
@@ -76,15 +76,14 @@ export function Sidebar({
         {tab === "documents" && <p className="text-muted">No documents yet.</p>}
 
         {tab === "quote" && isLender && (
-          <QuotePanel loan={loan} customFields={(loan.custom_fields as Record<string, unknown>) ?? {}} />
+          <QuotePanel loan={loan} values={fieldValues} />
         )}
 
         {tab === "loan" && (
           <LoanData
             loan={loan}
             fieldDefs={fieldDefs}
-            customFields={(loan.custom_fields as Record<string, unknown>) ?? {}}
-            tradeValues={tradeValues}
+            values={fieldValues}
             canEdit={isLender}
             isLender={isLender}
           />

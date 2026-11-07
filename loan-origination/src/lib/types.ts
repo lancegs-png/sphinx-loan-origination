@@ -62,12 +62,27 @@ export type Participant = {
 export type FieldDef = {
   key: string;
   label: string;
-  section: string; // loan | property | borrower | guarantor | trade
+  section: string; // loan | property | borrower | guarantor | trade | contact
   type: "text" | "number" | "currency" | "percent" | "date" | "select";
   options: string[];
   lender_only: boolean;
   sort: number;
+  verifiable: boolean;
+  repeat_group: string | null; // 'property' | 'guarantor' | null
+  source: string | null; // intake | manual | calculated | system | config
+  required_stage: string | null;
+  calc_key: string | null;
 };
+
+// One field's stored values for a loan (idx handled by the map key).
+export type FieldCell = {
+  initial: unknown;
+  verified: unknown;
+  locked: boolean;
+  current: unknown; // verified ?? initial
+};
+// Keyed by field key for idx 1, or `${key}#${idx}` for repeats.
+export type FieldValues = Record<string, FieldCell>;
 
 export type InternalNote = {
   id: string;

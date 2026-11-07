@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { quoteLoan, postQuoteToChat } from "@/app/actions";
-import type { Loan } from "@/lib/types";
+import type { FieldValues, Loan } from "@/lib/types";
 import type {
   PrepayTerm,
   PropertyKind,
@@ -31,11 +31,15 @@ function propertyFrom(loan: Loan, cf: Record<string, unknown>): PropertyKind {
 
 export function QuotePanel({
   loan,
-  customFields,
+  values,
 }: {
   loan: Loan;
-  customFields: Record<string, unknown>;
+  values: FieldValues;
 }) {
+  // Current value (verified ?? initial) of each field, for quote-input defaults.
+  const customFields: Record<string, unknown> = Object.fromEntries(
+    Object.entries(values).map(([k, v]) => [k, v.current]),
+  );
   const [f, setF] = useState({
     rate: "7.25",
     origPct: "1",
@@ -43,7 +47,7 @@ export function QuotePanel({
     lockDays: 30 as 30 | 45 | 60,
     loanAmount: String(loan.loan_amount ?? ""),
     propertyValue: String(num(customFields.as_is_value) || num(customFields.property_value) || ""),
-    fico: String(num(customFields.guarantor_credit) || ""),
+    fico: String(num(customFields.guarantor_fico) || num(customFields.guarantor_credit) || ""),
     purpose: purposeFrom(customFields),
     property: propertyFrom(loan, customFields),
     monthlyRent: String(num(customFields.monthly_rent) || ""),

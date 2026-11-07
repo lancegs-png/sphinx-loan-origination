@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { loadFieldValues } from "@/lib/fields";
 import { renderTermSheetPdf, type TermSheetData } from "@/lib/term-sheet/document";
 
 export const runtime = "nodejs";
@@ -64,36 +65,42 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const q = (cf.quote ?? {}) as Record<string, unknown>;
   const sig = cf.term_sheet as { signed_by?: string; signed_at?: string } | undefined;
 
+  // Borrower / property scalars come from the field store (single source of truth);
+  // the quote blob still supplies the pricing figures until the calc module (P16).
+  const fv = await loadFieldValues(supabase, id);
+  const cur = (k: string): unknown => fv[k]?.current ?? cf[k];
+
   const loanAmount = toNum(q.loan_amount) ?? loan.loan_amount ?? null;
-  const rateNum = toNum(q.rate);
-  const guarantor =
-    [cf.guarantor_first_name, cf.guarantor_last_name].filter(Boolean).join(" ") ||
-    loan.borrower_name ||
-    "—";
-  const firstName =
-    (cf.guarantor_first_name as string) ||
-    (loan.borrower_name ? loan.borrower_name.split(" ")[0] : "") ||
-    "there";
+  const rateNum = toNum(q.rate) ?? toNum(cur("interest_rate"));
+  const gFirst = (cur("guarantor_first_name") as string) || "";
+  const gLast = (cur("guarantor_last_name") as string) || "";
+  const guarantor = [gFirst, gLast].filter(Boolean).join(" ") || loan.borrower_name || "—";
+  const firstName = gFirst || (loan.borrower_name ? loan.borrower_name.split(" ")[0] : "") || "there";
 
   const data: TermSheetData = {
     date: new Date().toLocaleDateString("en-US"),
     greetingName: firstName,
     loanAmount: loanAmount ?? 0,
-    fico: toNum(cf.guarantor_credit),
+    fico: toNum(cur("guarantor_fico")) ?? toNum(cf.guarantor_credit),
     interestRate: rateNum != null ? `${rateNum}%` : "—",
-    propertyValue: toNum(cf.as_is_value) ?? toNum(cf.property_value),
+    propertyValue: toNum(cur("as_is_value")),
     loanProgram: "BPL Term",
     ltv: q.ltv != null ? `${q.ltv}%` : "—",
-    propertyType: label(PROP_TYPE, cf.property_type),
+    propertyType: label(PROP_TYPE, cur("property_type")),
     prepay: label(PREPAY, q.prepay),
     loanTermMonths: 360,
     dscr: q.dscr != null ? String(q.dscr) : "—",
-    loanPurpose: label(PURPOSE, cf.loan_purpose),
+    loanPurpose: label(PURPOSE, cur("loan_purpose")),
     loanType: "30 Year Fixed",
-    entity: (cf.entity_name as string) || loan.borrower_name || "—",
+    entity: (cur("borrower_entity") as string) || loan.borrower_name || "—",
     guarantor,
     monthlyPI: monthlyPI(loanAmount, rateNum),
-    originationPct: q.origination_pct != null ? toNum(q.origination_pct)!.toFixed(2) : "1.00",
+    originationPct:
+      q.origination_pct != null
+        ? toNum(q.origination_pct)!.toFixed(2)
+        : toNum(cur("origination_fee_pct")) != null
+          ? toNum(cur("origination_fee_pct"))!.toFixed(2)
+          : "1.00",
     propertyAddress: loan.property_address ?? "—",
     signature:
       sig?.signed_by && sig.signed_at
