@@ -1,5 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
+import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { loadFieldValues } from "@/lib/fields";
+import { loadCompanyConfig } from "@/lib/company";
 import { renderTermSheetPdf, type TermSheetData } from "@/lib/term-sheet/document";
 
 export const runtime = "nodejs";
@@ -69,6 +71,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   // calculated fields (P16). The legacy quote blob is only a fallback for old loans.
   const fv = await loadFieldValues(supabase, id);
   const cur = (k: string): unknown => fv[k]?.current ?? cf[k];
+  const company = await loadCompanyConfig(createServiceRoleClient());
 
   const loanAmount = toNum(cur("loan_amount")) ?? toNum(q.loan_amount) ?? loan.loan_amount ?? null;
   const rateNum = toNum(cur("interest_rate")) ?? toNum(q.rate);
@@ -101,6 +104,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     monthlyPI: pandi,
     originationPct: origPct != null ? origPct.toFixed(2) : "1.00",
     propertyAddress: loan.property_address ?? "—",
+    lenderName: company.lender.name,
+    lenderSigner: company.lender.signer,
+    lenderSignerTitle: company.lender.signer_title,
     signature:
       sig?.signed_by && sig.signed_at
         ? { name: sig.signed_by, dateStr: new Date(sig.signed_at).toLocaleDateString("en-US") }

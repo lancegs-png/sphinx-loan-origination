@@ -31,6 +31,10 @@ export type TermSheetData = {
   // Fees
   originationPct: string; // "1.00"
   propertyAddress: string; // Exhibit A
+  // Lender (company config)
+  lenderName: string;
+  lenderSigner: string;
+  lenderSignerTitle: string;
   // Signature (present once signed)
   signature?: { name: string; dateStr: string } | null;
 };
@@ -135,8 +139,8 @@ function buildBlocks(d: TermSheetData): Block[] {
     },
     { type: "gap", h: 6 },
     { type: "p", text: "Sincerely," },
-    { type: "p", text: "Lance Stukaloff" },
-    { type: "p", text: "Managing Partner" },
+    { type: "p", text: d.lenderSigner || "—" },
+    { type: "p", text: d.lenderSignerTitle || "" },
     { type: "pagebreak" },
     { type: "h2", text: "Disclaimer" },
     {
@@ -291,7 +295,7 @@ export async function renderTermSheetPdf(d: TermSheetData): Promise<Uint8Array> 
   for (const b of buildBlocks(d)) {
     switch (b.type) {
       case "brand": {
-        line("SPHINX CAPITAL, LLC", sansBold, 15, 3, INK);
+        line((d.lenderName || "Sphinx Capital, LLC").toUpperCase(), sansBold, 15, 3, INK);
         line("Business Purpose Real Estate Financing", sans, 9, 6, MUTED);
         need(10);
         page.drawLine({
