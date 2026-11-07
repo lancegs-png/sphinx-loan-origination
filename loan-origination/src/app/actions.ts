@@ -10,6 +10,7 @@ import {
   writeIntakeFields,
 } from "@/lib/fields";
 import { recomputeLoan } from "@/lib/calc";
+import { sheetsConfigured, createLoanSheet, writeSheetValues, sheetUrl } from "@/lib/google/sheets";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { answerLoanQuestion } from "@/lib/ai/record-keeper";
 import {
@@ -491,6 +492,79 @@ export async function setLoanFieldLock(input: {
   });
   if (error) return { ok: false, error: error.message };
   return { ok: true };
+}
+
+// ---------- Google Sheet mirror (P22, one-way push) ----------
+
+/** Create (if needed) and refresh this loan's Google Sheet with its field values. */
+export async function syncLoanToSheet(
+  loanId: string,
+): Promise<{ ok: boolean; error?: string; url?: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("is_lending_team")
+    .eq("id", user.id)
+    .single();
+  if (!profile?.is_lending_team) return { ok: false, error: "Lending team only." };
+  if (!sheetsConfigured())
+    return { ok: false, error: "Google Sheets isn't configured yet (GOOGLE_SERVICE_ACCOUNT_JSON)." };
+
+  const admin = createServiceRoleClient();
+  const { data: loan } = await admin
+    .from("loans")
+    .select("loan_number,sheet_id,drive_folder_id")
+    .eq("id", loanId)
+    .single();
+  if (!loan) return { ok: false, error: "No access to this loan." };
+
+  const [{ data: defs }, { data: vals }] = await Promise.all([
+    admin.from("field_definitions").select("key,label,section,sort").order("sort"),
+    admin
+      .from("loan_field_values")
+      .select("field_key,idx,initial_value,verified_value,locked,updated_at")
+      .eq("loan_id", loanId),
+  ]);
+
+  const s = (v: unknown) => (v == null ? "" : String(v));
+  const byKey = new Map((vals ?? []).map((r) => [`${r.field_key}#${r.idx}`, r]));
+  const rows: (string | number)[][] = [
+    ["Section", "Key", "Label", "Idx", "Initial", "Verified", "Locked", "Updated"],
+  ];
+  for (const d of defs ?? []) {
+    const idxs = new Set<number>([1]);
+    for (const r of vals ?? []) if (r.field_key === d.key) idxs.add(r.idx);
+    for (const idx of [...idxs].sort((a, b) => a - b)) {
+      const r = byKey.get(`${d.key}#${idx}`);
+      if (!r && idx > 1) continue;
+      rows.push([
+        d.section,
+        d.key,
+        d.label,
+        idx,
+        s(r?.initial_value),
+        s(r?.verified_value),
+        r?.locked ? "yes" : "",
+        r?.updated_at ? new Date(r.updated_at).toISOString() : "",
+      ]);
+    }
+  }
+
+  try {
+    let sheetId = loan.sheet_id as string | null;
+    if (!sheetId) {
+      sheetId = await createLoanSheet(`Loan ${loan.loan_number} — Field Data`, loan.drive_folder_id);
+      await admin.from("loans").update({ sheet_id: sheetId }).eq("id", loanId);
+    }
+    await writeSheetValues(sheetId, rows);
+    return { ok: true, url: sheetUrl(sheetId) };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Sheet sync failed." };
+  }
 }
 
 // ---------- Per-loan checklist (P18) ----------

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { saveLoanField, setLoanFieldLock } from "@/app/actions";
+import { saveLoanField, setLoanFieldLock, syncLoanToSheet } from "@/app/actions";
 import type { FieldDef, FieldValues, Loan } from "@/lib/types";
 
 const SECTION_ORDER = ["loan", "property", "borrower", "guarantor", "contact", "trade"];
@@ -53,6 +53,7 @@ export function LoanData({
   return (
     <div className="flex flex-col gap-6">
       {!canEdit && <p className="text-xs text-muted">Read-only</p>}
+      {canEdit && <SheetSync loanId={loan.id} />}
       {SECTION_ORDER.map((section) => {
         const inSection = defs.filter((d) => d.section === section).sort((a, b) => a.sort - b.sort);
         if (inSection.length === 0) return null;
@@ -212,6 +213,37 @@ function Input({
         />
       )}
     </label>
+  );
+}
+
+function SheetSync({ loanId }: { loanId: string }) {
+  const [busy, setBusy] = useState(false);
+  const [url, setUrl] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  async function sync() {
+    setBusy(true);
+    setErr(null);
+    const res = await syncLoanToSheet(loanId);
+    setBusy(false);
+    if (res.ok) setUrl(res.url ?? null);
+    else setErr(res.error ?? "Sync failed.");
+  }
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-xs">
+      <button
+        onClick={sync}
+        disabled={busy}
+        className="rounded-md border border-line px-3 py-1.5 font-medium disabled:opacity-50"
+      >
+        {busy ? "Syncing…" : "Sync to Google Sheet"}
+      </button>
+      {url && (
+        <a href={url} target="_blank" rel="noopener noreferrer" className="underline text-muted">
+          Open sheet
+        </a>
+      )}
+      {err && <span style={{ color: "var(--status-outstanding)" }}>{err}</span>}
+    </div>
   );
 }
 
