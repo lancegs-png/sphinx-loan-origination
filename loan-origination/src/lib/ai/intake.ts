@@ -4,27 +4,23 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 const MODEL = process.env.ANTHROPIC_MODEL ?? "claude-opus-5-5";
 
-// Fields the intake agent can extract (design §6, R-INTAKE-*). All optional —
+// Fields the intake agent extracts (design §6, R-INTAKE-*). Dictionary-native (P17):
+// all captured values go in `fields`, keyed by data-dictionary keys. All optional —
 // captured incrementally over the conversation.
 export type IntakeFields = {
   submitter_role?: "borrower" | "originator";
-  borrower_name?: string;
-  borrower_kind?: "individual" | "entity";
-  entity_type?: "corporation" | "llc" | "trust";
   originator_name?: string;
   loan_type_key?:
     | "bridge"
     | "fix_and_flip"
     | "new_construction"
     | "dscr"
+    | "rtl"
     | "commercial_bridge"
     | "commercial_permanent";
-  loan_amount?: number;
-  property_address?: string;
-  expected_close_date?: string; // YYYY-MM-DD
   notes?: string;
-  // Program-specific quote inputs (keys come from the program's configured quote fields).
-  quote_fields?: Record<string, string | number | boolean>;
+  // Captured values keyed by data-dictionary field keys (the configured intake fields).
+  fields?: Record<string, string | number | boolean>;
 };
 
 export type FieldType = "text" | "number" | "currency" | "date" | "select";
@@ -62,10 +58,11 @@ export function detectLoanTypeKey(text: string): IntakeFields["loan_type_key"] |
   const t = text.toLowerCase();
   if (/commercial.*(permanent|perm)/.test(t)) return "commercial_permanent";
   if (/commercial.*bridge/.test(t)) return "commercial_bridge";
-  if (/\bdscr\b|rental/.test(t)) return "dscr";
-  if (/fix.{0,4}(and|&|n).{0,4}flip|\bflip\b/.test(t)) return "fix_and_flip";
-  if (/new construction|ground.?up|\bconstruction\b/.test(t)) return "new_construction";
-  if (/\bbridge\b/.test(t)) return "bridge";
+  if (/\bdscr\b|rental|buy.?and.?hold/.test(t)) return "dscr";
+  // Fix & flip, bridge, and new construction all map to the RTL program.
+  if (/fix.{0,4}(and|&|n).{0,4}flip|\bflip\b|new construction|ground.?up|\bconstruction\b|\bbridge\b|\brtl\b|rehab/.test(t)) {
+    return "rtl";
+  }
   return null;
 }
 
@@ -78,9 +75,6 @@ const recordIntakeTool: Anthropic.Tool = {
     additionalProperties: false,
     properties: {
       submitter_role: { type: "string", enum: ["borrower", "originator"] },
-      borrower_name: { type: "string" },
-      borrower_kind: { type: "string", enum: ["individual", "entity"] },
-      entity_type: { type: "string", enum: ["corporation", "llc", "trust"] },
       originator_name: { type: "string" },
       loan_type_key: {
         type: "string",
@@ -89,19 +83,18 @@ const recordIntakeTool: Anthropic.Tool = {
           "fix_and_flip",
           "new_construction",
           "dscr",
+          "rtl",
           "commercial_bridge",
           "commercial_permanent",
         ],
+        description: "The loan program. DSCR for rentals; RTL for fix & flip / bridge / new construction.",
       },
-      loan_amount: { type: "number" },
-      property_address: { type: "string" },
-      expected_close_date: { type: "string", description: "ISO date YYYY-MM-DD" },
       notes: { type: "string" },
-      quote_fields: {
+      fields: {
         type: "object",
         additionalProperties: true,
         description:
-          "Program-specific quote inputs as key/value pairs. Use the keys listed in the program's required quote fields.",
+          "Captured values keyed by the data-dictionary field keys listed in the gather lists (e.g. property_street, borrower_entity, guarantor_first_name, as_is_value, monthly_rent).",
       },
     },
   },
@@ -143,16 +136,13 @@ const askFieldsTool: Anthropic.Tool = {
 
 const BASE_SYSTEM = [
   "You are the AI originator for a private loan platform, conducting intake for a NEW loan in a chat.",
-  "Guide a natural Who / What / Where / When / Why conversation, one step at a time, keeping replies short and friendly:",
-  "- First, if not yet known, ask whether they are the borrower or an originator (broker / referral partner). If an originator, also gather the borrower's name.",
-  "- Who: borrower name; is the borrower an individual or an entity (LLC, corporation, trust)?",
-  "- What: loan type (map to one of bridge, fix & flip, new construction, DSCR, commercial bridge, commercial permanent), loan amount.",
-  "- Where: property address (and note if there are multiple properties).",
-  "- When: expected closing timing.",
-  "- Why: any additional notes about the deal.",
-  "Whenever the user gives you a fact, call record_intake with the new field(s). Confirm what you captured in one short line, then ask for the next single missing item.",
-  "When you have borrower, loan type, amount, property, and timing, give a brief summary and tell them a team member will follow up with a quote or feedback within 24 hours.",
-  "Never invent values. Ask rather than assume.",
+  "Guide a natural, one-step-at-a-time conversation, keeping replies short and friendly:",
+  "- First, if not yet known, ask whether they are the borrower or an originator (broker / referral partner); record submitter_role. If an originator, also gather the borrower's contact.",
+  "- Early on, determine the loan program and record it as loan_type_key: DSCR (rental / buy-and-hold) or RTL (fix & flip, bridge, or new construction). Multifamily properties use DSCR.",
+  "- Then work through the gather lists below, one item at a time.",
+  "Record every captured value by calling record_intake with a `fields` object keyed by the data-dictionary keys shown in the lists (e.g. { \"property_street\": \"123 Main St\", \"borrower_entity\": \"Acme LLC\" }). Confirm what you captured in one short line, then ask for the next single missing item.",
+  "When you have the program, property, borrower/guarantor, and the program's key inputs, give a brief summary and tell them a team member will follow up with a quote within 24 hours.",
+  "Never invent values. Ask rather than assume. A borrower who doesn't yet have an entity can answer \"Entity TBD\" for borrower_entity.",
   "Normalize capitalization when you record values: put personal names, business/entity names, street addresses, and city names in proper title case (e.g., 'mike brown' -> 'Mike Brown', '123 main st' -> '123 Main St'). Keep email addresses lowercase. Use uppercase two-letter state abbreviations (e.g., 'tx' -> 'TX'). Preserve conventional business suffixes (LLC, Inc, LP, LLP, Corp) and street-type abbreviations (St, Ave, Rd, Blvd, Ln, Dr). Do not change numeric values the user provided.",
   "Stay conversational. You MAY ask in plain text, but when a field has fixed options (e.g. purchase vs refinance, individual vs entity, loan type) or when a few related values go together, call ask_fields to present a small inline form (2-5 inputs) — put option-bearing fields as type 'select' with their options so they render as dropdowns. Always call record_intake to save the facts you learn, whether from text or a submitted form.",
 ].join("\n");
@@ -184,7 +174,7 @@ function buildSystem(global: GlobalIntakeConfig, program: ProgramAiConfig): stri
       .map((f) => `- ${f.label} (key: ${f.key})${fieldHint(f)}${f.required ? " [required for a quote]" : ""}`)
       .join("\n");
     parts.push(
-      "Once the loan type is known, also gather these inputs for an initial quote and record them in the record_intake tool's quote_fields object (use the given keys):\n" +
+      "Once the loan type is known, also gather these inputs for an initial quote and record them in record_intake's `fields` object (use the given keys):\n" +
         list,
     );
   }
@@ -204,6 +194,7 @@ const PROGRAM_LABEL: Record<NonNullable<IntakeFields["loan_type_key"]>, string> 
   fix_and_flip: "Fix and Flip",
   new_construction: "New Construction",
   dscr: "DSCR",
+  rtl: "RTL",
   commercial_bridge: "Commercial Bridge",
   commercial_permanent: "Commercial Permanent",
 };
@@ -297,9 +288,9 @@ export async function runIntakeTurn(opts: {
       for (const tu of toolUses) {
         if (tu.name === "record_intake") {
           const inp = tu.input as IntakeFields;
-          const mergedQuote = { ...(fields.quote_fields ?? {}), ...(inp.quote_fields ?? {}) };
+          const merged = { ...(fields.fields ?? {}), ...(inp.fields ?? {}) };
           Object.assign(fields, inp);
-          if (Object.keys(mergedQuote).length) fields.quote_fields = mergedQuote;
+          if (Object.keys(merged).length) fields.fields = merged;
         } else if (tu.name === "ask_fields") {
           form = tu.input as IntakeForm;
         }

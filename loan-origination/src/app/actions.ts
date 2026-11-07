@@ -157,38 +157,25 @@ export async function intakeTurn(
 
   const { reply, fields, form } = result;
 
-  const updates: Record<string, unknown> = {};
-  if (fields.borrower_name) updates.borrower_name = fields.borrower_name;
-  if (typeof fields.loan_amount === "number") updates.loan_amount = fields.loan_amount;
-  if (fields.property_address) updates.property_address = fields.property_address;
+  // Program: set program_id directly; the loan_program field (written below) syncs the
+  // loans.loan_type / loan_program summary columns via trigger.
   if (fields.loan_type_key) {
-    updates.loan_type = PROGRAM_LABEL[fields.loan_type_key];
     const { data: prog } = await supabase
       .from("loan_programs")
       .select("id")
       .eq("loan_type_key", fields.loan_type_key)
       .single();
-    if (prog) updates.program_id = prog.id;
-  }
-  if (fields.quote_fields && Object.keys(fields.quote_fields).length) {
-    const existing = (loan.custom_fields as Record<string, unknown>) ?? {};
-    updates.custom_fields = { ...existing, ...fields.quote_fields };
-  }
-  if (Object.keys(updates).length) {
-    await admin.from("loans").update(updates).eq("id", loanId);
+    if (prog) await admin.from("loans").update({ program_id: prog.id }).eq("id", loanId);
   }
 
-  // P14 bridge: mirror captured facts into loan_field_values (the single store).
-  // The intake agent still uses legacy keys; writeIntakeFields maps them and skips
-  // calculated fields. P17 replaces this with a dictionary-native record_intake schema.
-  const intakeRaw: Record<string, unknown> = { ...(fields.quote_fields ?? {}) };
-  if (fields.borrower_name) intakeRaw.borrower_name = fields.borrower_name;
-  if (fields.expected_close_date && /^\d{4}-\d{2}-\d{2}$/.test(fields.expected_close_date)) {
-    intakeRaw.closing_date = fields.expected_close_date;
-  }
+  // P17: the intake agent reports dictionary keys directly. Write captured facts into
+  // loan_field_values (the single store), then recompute derived fields. Summary columns
+  // (borrower_name, property_address, ...) sync from the field values by trigger.
+  const intakeRaw: Record<string, unknown> = { ...(fields.fields ?? {}) };
   if (fields.loan_type_key) {
     intakeRaw.loan_program = PROGRAM_LABEL[fields.loan_type_key] ?? fields.loan_type_key.toUpperCase();
   }
+  if (fields.notes) intakeRaw.loan_request_summary = fields.notes;
   if (Object.keys(intakeRaw).length) {
     const { data: defRows } = await admin.from("field_definitions").select("key,type,source");
     const defs = Object.fromEntries(

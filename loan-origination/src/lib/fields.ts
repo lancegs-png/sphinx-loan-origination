@@ -105,10 +105,10 @@ const mapPurpose = (v: unknown): unknown => {
 };
 
 /**
- * Bridge intake-captured facts into loan_field_values as initial values.
- * `defs` maps dictionary key -> { type, source } so we coerce and skip calculated.
- * Uses the caller's client (service role for intake). P17 replaces this with a
- * dictionary-native record_intake schema.
+ * Write intake-captured facts into loan_field_values as initial values. The intake
+ * agent reports data-dictionary keys directly (P17); LEGACY_MAP remains as a safety net
+ * for any older keys. `defs` maps dictionary key -> { type, source } so we coerce values
+ * and skip calculated fields. Uses the caller's client (service role for intake).
  */
 export async function writeIntakeFields(
   client: SupabaseClient,
