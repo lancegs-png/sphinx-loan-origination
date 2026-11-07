@@ -15,10 +15,10 @@ const CANDIDATES = [
   "/Applications/LibreOffice.app/Contents/MacOS/soffice",
 ];
 
-let cached: string | null | undefined;
+let cached: string | null = null; // only a *found* binary is cached (so install needs no restart)
 
 async function sofficeBin(): Promise<string | null> {
-  if (cached !== undefined) return cached;
+  if (cached) return cached;
   for (const c of CANDIDATES) {
     try {
       if (c.includes("/")) {
@@ -33,7 +33,6 @@ async function sofficeBin(): Promise<string | null> {
       /* try next */
     }
   }
-  cached = null;
   return null;
 }
 
