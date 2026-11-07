@@ -113,21 +113,21 @@ export function PipelineTable({ loans }: { loans: Loan[] }) {
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Toolbar */}
-      <div className="flex flex-wrap items-center gap-2">
+      {/* Toolbar — compact, grouped to the right */}
+      <div className="flex flex-wrap items-center justify-end gap-2">
         <input
           type="search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search loan, property, borrower…"
+          placeholder="Search…"
           aria-label="Search loans"
-          className="field search w-full sm:w-72"
+          className="field field-sm search w-full sm:w-52"
         />
         <select
           value={stage}
           onChange={(e) => setStage(e.target.value)}
           aria-label="Filter by stage"
-          className="field select w-auto"
+          className="field field-sm select w-auto"
         >
           <option value="">All stages</option>
           {stagesPresent.map((s) => (
@@ -141,7 +141,7 @@ export function PipelineTable({ loans }: { loans: Loan[] }) {
             value={type}
             onChange={(e) => setType(e.target.value)}
             aria-label="Filter by type"
-            className="field select w-auto"
+            className="field field-sm select w-auto"
           >
             <option value="">All types</option>
             {types.map((t) => (
@@ -152,7 +152,7 @@ export function PipelineTable({ loans }: { loans: Loan[] }) {
           </select>
         )}
 
-        <div className="ml-auto flex items-center gap-2">
+        <div className="flex items-center gap-2">
           {hasFilters && (
             <button
               type="button"
@@ -161,13 +161,13 @@ export function PipelineTable({ loans }: { loans: Loan[] }) {
                 setStage("");
                 setType("");
               }}
-              className="btn btn-ghost text-sm"
+              className="btn btn-ghost btn-sm"
             >
               Clear
             </button>
           )}
           <details ref={colMenuRef} className="relative">
-            <summary className="btn btn-secondary cursor-pointer text-sm">
+            <summary className="btn btn-secondary btn-sm cursor-pointer">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                 <path d="M4 6h16M7 12h10M10 18h4" />
               </svg>
