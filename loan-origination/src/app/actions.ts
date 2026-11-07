@@ -9,6 +9,7 @@ import {
   upsertFieldValue,
   writeIntakeFields,
 } from "@/lib/fields";
+import { recomputeLoan } from "@/lib/calc";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { answerLoanQuestion } from "@/lib/ai/record-keeper";
 import {
@@ -194,6 +195,11 @@ export async function intakeTurn(
       (defRows ?? []).map((d) => [d.key, { type: d.type as string, source: d.source as string | null }]),
     );
     await writeIntakeFields(admin, loanId, intakeRaw, defs);
+    try {
+      await recomputeLoan(loanId);
+    } catch {
+      /* calc is best-effort */
+    }
   }
 
   const { error } = await admin.from("messages").insert({
@@ -469,6 +475,12 @@ export async function saveLoanField(input: {
     actorId: user.id,
   });
   if (error) return { ok: false, error: error.message };
+  // Recompute calculated fields from the new inputs (never blocks the save).
+  try {
+    await recomputeLoan(input.loanId);
+  } catch {
+    /* calc is best-effort */
+  }
   return { ok: true };
 }
 
