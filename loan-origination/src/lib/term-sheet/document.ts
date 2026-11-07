@@ -1,9 +1,12 @@
 import "server-only";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import {
   PDFDocument,
   StandardFonts,
   rgb,
   type PDFFont,
+  type PDFImage,
   type PDFPage,
   type RGB,
 } from "pdf-lib";
@@ -257,6 +260,18 @@ export async function renderTermSheetPdf(d: TermSheetData): Promise<Uint8Array> 
   const sans = await doc.embedFont(StandardFonts.Helvetica);
   const sansBold = await doc.embedFont(StandardFonts.HelveticaBold);
 
+  // Sphinx-branded documents get the logo; white-label keeps the lender name.
+  const isSphinx = !d.lenderName || /sphinx/i.test(d.lenderName);
+  let logo: PDFImage | null = null;
+  if (isSphinx) {
+    try {
+      const bytes = await readFile(path.join(process.cwd(), "public", "brand", "sphinx-logo.png"));
+      logo = await doc.embedPng(bytes);
+    } catch {
+      logo = null; // fall back to the text header if the asset can't be read
+    }
+  }
+
   let page: PDFPage = doc.addPage([PAGE_W, PAGE_H]);
   let y = PAGE_H - MARGIN;
 
@@ -295,7 +310,16 @@ export async function renderTermSheetPdf(d: TermSheetData): Promise<Uint8Array> 
   for (const b of buildBlocks(d)) {
     switch (b.type) {
       case "brand": {
-        line((d.lenderName || "Sphinx Capital, LLC").toUpperCase(), sansBold, 15, 3, INK);
+        if (logo) {
+          const w = 150;
+          const h = (logo.height / logo.width) * w;
+          need(h + 4);
+          y -= h;
+          page.drawImage(logo, { x: MARGIN, y, width: w, height: h });
+          y -= 4;
+        } else {
+          line((d.lenderName || "Sphinx Capital, LLC").toUpperCase(), sansBold, 15, 3, INK);
+        }
         line("Business Purpose Real Estate Financing", sans, 9, 6, MUTED);
         need(10);
         page.drawLine({
