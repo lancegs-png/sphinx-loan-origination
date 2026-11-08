@@ -98,6 +98,7 @@ export function LoanData({
         cell={values[def.key]}
         canEdit={canEdit}
         isLender={isLender}
+        singleValue={def.section === "property"}
         onSave={(kind, v) => save(def, kind, v)}
         onLock={(locked) => toggleLock(def, locked)}
       />
@@ -139,6 +140,26 @@ export function LoanData({
     ? cardShell("additional_loan", "Additional Loan Info", additional.map((d) => row(d)))
     : null;
 
+  // Initial Property Data: the original (intake) values for property fields, read-only.
+  // The live Property card shows the current value (verified once set, else initial).
+  const propInitials = defs
+    .filter((d) => d.section === "property" && d.verifiable)
+    .sort((a, b) => a.sort - b.sort);
+  const initialCard =
+    isLender && propInitials.length
+      ? cardShell(
+          "initial_property",
+          "Initial Property Data",
+          propInitials.map((d) => (
+            <Row key={d.key} label={d.label}>
+              <span className="block truncate px-2 py-1.5 text-sm text-muted">
+                {fmtDisplay(d, str(values[d.key]?.initial))}
+              </span>
+            </Row>
+          )),
+        )
+      : null;
+
   return (
     <div className="flex flex-col gap-3">
       {!canEdit && <p className="text-xs text-muted">Read-only</p>}
@@ -147,6 +168,7 @@ export function LoanData({
         <div className="flex flex-col gap-3">
           {loanCard}
           {sectionCard("trade")}
+          {initialCard}
         </div>
         <div className="flex flex-col gap-3">
           {sectionCard("property")}
@@ -166,6 +188,7 @@ function FieldRow({
   cell,
   canEdit,
   isLender,
+  singleValue,
   onSave,
   onLock,
 }: {
@@ -173,6 +196,7 @@ function FieldRow({
   cell: FieldValues[string] | undefined;
   canEdit: boolean;
   isLender: boolean;
+  singleValue?: boolean;
   onSave: (kind: "initial" | "verified", value: string) => void;
   onLock: (locked: boolean) => void;
 }) {
@@ -190,8 +214,17 @@ function FieldRow({
     );
   }
 
-  // Verifiable (lender): Initial | Verified side by side in the value cell.
+  // Verifiable (lender). Single-value mode shows just the current value (initial until a
+  // verified value is set) and edits write to verified; the original initial is preserved
+  // and shown read-only in the "Initial Property Data" card.
   if (def.verifiable && isLender) {
+    if (singleValue) {
+      return (
+        <Row label={def.label} locked={locked} onLock={() => onLock(!locked)} showLock={showLock}>
+          <CellInput def={def} base={current} disabled={locked} onCommit={(v) => onSave("verified", v)} />
+        </Row>
+      );
+    }
     return (
       <Row label={def.label} locked={locked} onLock={() => onLock(!locked)} showLock={showLock}>
         <div className="grid grid-cols-2 divide-x divide-line">
