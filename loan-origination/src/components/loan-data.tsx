@@ -17,6 +17,17 @@ const SECTION_LABEL: Record<string, string> = {
 
 const str = (v: unknown) => (v == null ? "" : String(v));
 
+/** Read-only display: currency with a $ and thousands separators, percent with a %. */
+function fmtDisplay(def: FieldDef, v: string): string {
+  if (!v) return "—";
+  if (def.type === "currency") {
+    const n = Number(v.replace(/[^0-9.-]/g, ""));
+    return Number.isFinite(n) ? `$${Math.round(n).toLocaleString("en-US")}` : v;
+  }
+  if (def.type === "percent") return /%\s*$/.test(v) ? v : `${v}%`;
+  return v;
+}
+
 export function LoanData({
   loan,
   fieldDefs,
@@ -114,7 +125,7 @@ function FieldRow({
   if (calculated || !canEdit) {
     return (
       <Row label={def.label} badge={calculated ? "auto" : undefined}>
-        <span className="block truncate px-2 py-1.5 text-sm text-fg">{current || "—"}</span>
+        <span className="block truncate px-2 py-1.5 text-sm text-fg">{fmtDisplay(def, current)}</span>
       </Row>
     );
   }
@@ -221,9 +232,13 @@ function CellInput({
   }
 
   const inputType = def.type === "date" ? "date" : def.type === "number" ? "number" : "text";
-  return (
+  const prefix = def.type === "currency" ? "$" : null;
+  const suffix = def.type === "percent" ? "%" : null;
+
+  const input = (
     <input
       type={inputType}
+      inputMode={def.type === "currency" || def.type === "percent" ? "decimal" : undefined}
       value={value}
       disabled={disabled}
       placeholder={placeholder}
@@ -231,8 +246,35 @@ function CellInput({
       onBlur={() => {
         if (value !== base) onCommit(value);
       }}
-      className={cls}
+      className={`w-full bg-transparent py-1.5 text-sm text-fg outline-none disabled:opacity-50 ${
+        prefix ? "pl-1" : "pl-2"
+      } ${suffix ? "pr-1" : "pr-2"}`}
     />
+  );
+
+  if (!prefix && !suffix) {
+    // No adornment: let the input fill the cell and show the focus tint itself.
+    return (
+      <input
+        type={inputType}
+        value={value}
+        disabled={disabled}
+        placeholder={placeholder}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={() => {
+          if (value !== base) onCommit(value);
+        }}
+        className={cls}
+      />
+    );
+  }
+
+  return (
+    <div className="flex items-center focus-within:bg-gold/5">
+      {prefix && <span className="pl-2 text-sm text-muted">{prefix}</span>}
+      {input}
+      {suffix && <span className="pr-2 text-sm text-muted">{suffix}</span>}
+    </div>
   );
 }
 
