@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getSessionProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import { loadGuarantorNames } from "@/lib/fields";
 import { PipelineHome } from "@/components/pipeline-home";
 import { LoanPicker } from "@/components/loan-picker";
 import type { Loan } from "@/lib/types";
@@ -20,7 +21,8 @@ export default async function Home() {
 
   // Lending team → Pipeline home (R-AUTH-7, R-UI-8).
   if (profile.is_lending_team) {
-    return <PipelineHome loans={loans} profile={profile} />;
+    const guarantors = await loadGuarantorNames(supabase);
+    return <PipelineHome loans={loans} profile={profile} guarantors={guarantors} />;
   }
 
   // Borrower/originator: one loan → open it; multiple → picker (R-UI-10).

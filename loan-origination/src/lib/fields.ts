@@ -24,6 +24,35 @@ export async function loadFieldValues(
   return out;
 }
 
+/**
+ * Guarantor display name (first + last, current value = verified ?? initial) per loan,
+ * in one query — for the pipeline list. Only loans with a name are included. RLS limits
+ * rows to loans the caller can access.
+ */
+export async function loadGuarantorNames(
+  supabase: SupabaseClient,
+): Promise<Record<string, string>> {
+  const { data } = await supabase
+    .from("loan_field_values")
+    .select("loan_id,field_key,initial_value,verified_value")
+    .in("field_key", ["guarantor_first_name", "guarantor_last_name"])
+    .eq("idx", 1);
+  const parts: Record<string, { first?: string; last?: string }> = {};
+  for (const r of data ?? []) {
+    const cur = r.verified_value ?? r.initial_value;
+    if (cur == null || cur === "") continue;
+    const slot = (parts[r.loan_id] ??= {});
+    if (r.field_key === "guarantor_first_name") slot.first = String(cur);
+    else slot.last = String(cur);
+  }
+  const out: Record<string, string> = {};
+  for (const [loanId, p] of Object.entries(parts)) {
+    const name = [p.first, p.last].filter(Boolean).join(" ");
+    if (name) out[loanId] = name;
+  }
+  return out;
+}
+
 export function coerceForType(type: string, raw: string): unknown {
   if (raw === "") return null;
   if (type === "number" || type === "currency" || type === "percent") {

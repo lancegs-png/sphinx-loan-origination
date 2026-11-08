@@ -14,28 +14,37 @@ function money(n: number | null) {
   }).format(n);
 }
 
-type ColKey = "property" | "borrower" | "amount" | "type" | "stage" | "close";
+type ColKey = "property" | "borrower" | "guarantor" | "amount" | "type" | "stage" | "close";
 
 const ALL_COLS: { key: ColKey; label: string; align?: "right" }[] = [
   { key: "property", label: "Property" },
   { key: "borrower", label: "Borrower" },
+  { key: "guarantor", label: "Guarantor" },
   { key: "amount", label: "Amount", align: "right" },
   { key: "type", label: "Type" },
   { key: "stage", label: "Stage" },
   { key: "close", label: "Close" },
 ];
 
-const STORAGE_KEY = "sphinx.pipeline.cols.v1";
+// Bumped to v2 so the new Guarantor column shows for viewers who saved v1 preferences.
+const STORAGE_KEY = "sphinx.pipeline.cols.v2";
 const DEFAULT_VISIBLE: Record<ColKey, boolean> = {
   property: true,
   borrower: true,
+  guarantor: true,
   amount: true,
   type: true,
   stage: true,
   close: true,
 };
 
-export function PipelineTable({ loans }: { loans: Loan[] }) {
+export function PipelineTable({
+  loans,
+  guarantors,
+}: {
+  loans: Loan[];
+  guarantors: Record<string, string>;
+}) {
   const [query, setQuery] = useState("");
   const [stage, setStage] = useState("");
   const [type, setType] = useState("");
@@ -100,13 +109,13 @@ export function PipelineTable({ loans }: { loans: Loan[] }) {
       if (stage && l.stage !== stage) return false;
       if (type && l.loan_type !== type) return false;
       if (!q) return true;
-      const hay = [l.loan_number, l.opportunity_number, l.property_address, l.borrower_name]
+      const hay = [l.loan_number, l.opportunity_number, l.property_address, l.borrower_name, guarantors[l.id]]
         .filter(Boolean)
         .join(" ")
         .toLowerCase();
       return hay.includes(q);
     });
-  }, [loans, query, stage, type]);
+  }, [loans, query, stage, type, guarantors]);
 
   const shownCols = ALL_COLS.filter((c) => visible[c.key]);
   const hasFilters = query.trim() !== "" || stage !== "" || type !== "";
@@ -236,6 +245,7 @@ export function PipelineTable({ loans }: { loans: Loan[] }) {
                       >
                         {c.key === "property" && <span className="text-fg">{l.property_address ?? "—"}</span>}
                         {c.key === "borrower" && <span className="text-fg">{l.borrower_name ?? "—"}</span>}
+                        {c.key === "guarantor" && <span className="text-fg">{guarantors[l.id] ?? "—"}</span>}
                         {c.key === "amount" && (
                           <span className="font-medium tabular-nums text-fg">{money(l.loan_amount)}</span>
                         )}

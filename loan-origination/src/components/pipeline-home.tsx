@@ -4,7 +4,15 @@ import { PipelineTable } from "@/components/pipeline-table";
 import { navFor } from "@/lib/nav";
 import type { Loan, Profile } from "@/lib/types";
 
-export function PipelineHome({ loans, profile }: { loans: Loan[]; profile: Profile }) {
+export function PipelineHome({
+  loans,
+  profile,
+  guarantors,
+}: {
+  loans: Loan[];
+  profile: Profile;
+  guarantors: Record<string, string>;
+}) {
   return (
     <AppShell email={profile.email} nav={navFor(profile)}>
       <main className="mx-auto max-w-6xl px-6 py-9 lg:px-10">
@@ -35,7 +43,7 @@ export function PipelineHome({ loans, profile }: { loans: Loan[]; profile: Profi
             </form>
           </div>
         ) : (
-          <PipelineTable loans={loans} />
+          <PipelineTable loans={loans} guarantors={guarantors} />
         )}
       </main>
     </AppShell>
