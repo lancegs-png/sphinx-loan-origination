@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { StageBar } from "./stage-bar";
-import { Chat } from "./chat";
-import { Sidebar } from "./sidebar";
+import { DealTabs } from "./deal-tabs";
 import type {
   ChecklistItem,
   FieldDef,
@@ -76,26 +75,20 @@ export function DealView({
         </div>
       </header>
 
-      <div className="flex min-h-0 flex-1 flex-col md:flex-row">
-        <Chat
-          loanId={loan.id}
-          initialMessages={messages}
-          currentUserId={currentUserId}
-          currentRole={currentRole}
-          isLender={isLender}
-          intakeMode={intakeMode}
-        />
-        <Sidebar
-          loan={loan}
-          participants={participants}
-          internalNotes={internalNotes}
-          isLender={isLender}
-          fieldDefs={fieldDefs}
-          fieldValues={fieldValues}
-          checklist={checklist}
-          atProcessing={atProcessing}
-        />
-      </div>
+      <DealTabs
+        loan={loan}
+        messages={messages}
+        participants={participants}
+        internalNotes={internalNotes}
+        currentUserId={currentUserId}
+        currentRole={currentRole}
+        isLender={isLender}
+        intakeMode={intakeMode}
+        fieldDefs={fieldDefs}
+        fieldValues={fieldValues}
+        checklist={checklist}
+        atProcessing={atProcessing}
+      />
     </div>
   );
 }
