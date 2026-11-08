@@ -2,7 +2,8 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { getSessionProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { AppShell, type NavItem } from "@/components/app-shell";
+import { AppShell } from "@/components/app-shell";
+import { navFor } from "@/lib/nav";
 
 export default async function AdminHome() {
   const session = await getSessionProfile();
@@ -15,10 +16,7 @@ export default async function AdminHome() {
     .select("id,name,loan_type_key")
     .order("name");
 
-  const nav: NavItem[] = [
-    { href: "/", label: "Pipeline", icon: "pipeline", match: "exact" },
-    { href: "/admin", label: "Settings", icon: "settings", match: "prefix" },
-  ];
+  const nav = navFor(session.profile);
 
   const library = [
     { href: "/admin/intake", label: "Global Intake", hint: "Opening questions, style, examples" },

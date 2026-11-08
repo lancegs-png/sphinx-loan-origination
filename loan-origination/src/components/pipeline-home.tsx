@@ -1,16 +1,12 @@
 import { addLoan } from "@/app/actions";
-import { AppShell, type NavItem } from "@/components/app-shell";
+import { AppShell } from "@/components/app-shell";
 import { PipelineTable } from "@/components/pipeline-table";
+import { navFor } from "@/lib/nav";
 import type { Loan, Profile } from "@/lib/types";
 
 export function PipelineHome({ loans, profile }: { loans: Loan[]; profile: Profile }) {
-  const nav: NavItem[] = [{ href: "/", label: "Pipeline", icon: "pipeline", match: "exact" }];
-  if (profile.lender_user_type === "admin") {
-    nav.push({ href: "/admin", label: "Settings", icon: "settings", match: "prefix" });
-  }
-
   return (
-    <AppShell email={profile.email} nav={nav}>
+    <AppShell email={profile.email} nav={navFor(profile)}>
       <main className="mx-auto max-w-6xl px-6 py-9 lg:px-10">
         <div className="mb-6 flex items-end justify-between gap-4">
           <div>

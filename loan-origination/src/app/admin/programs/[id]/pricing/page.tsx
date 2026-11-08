@@ -1,7 +1,8 @@
 import { notFound, redirect } from "next/navigation";
 import { getSessionProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { AppShell, type NavItem } from "@/components/app-shell";
+import { AppShell } from "@/components/app-shell";
+import { navFor } from "@/lib/nav";
 import { ProgramPricingEditor } from "@/components/program-pricing-editor";
 
 export default async function PricingPage({ params }: { params: Promise<{ id: string }> }) {
@@ -24,10 +25,7 @@ export default async function PricingPage({ params }: { params: Promise<{ id: st
     .eq("program_id", id)
     .single();
 
-  const nav: NavItem[] = [
-    { href: "/", label: "Pipeline", icon: "pipeline", match: "exact" },
-    { href: "/admin", label: "Settings", icon: "settings", match: "prefix" },
-  ];
+  const nav = navFor(session.profile);
 
   return (
     <AppShell email={session.profile?.email ?? ""} nav={nav}>

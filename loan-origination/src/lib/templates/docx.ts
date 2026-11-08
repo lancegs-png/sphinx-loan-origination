@@ -22,7 +22,7 @@ export function fillDocx(templateId: string, data: Record<string, string>): Buff
   return doc.getZip().generate({ type: "nodebuffer" }) as Buffer;
 }
 
-const money = (v: unknown) => `$${Math.round(Number(v)).toLocaleString("en-US")}`;
+export const money = (v: unknown) => `$${Math.round(Number(v)).toLocaleString("en-US")}`;
 
 /**
  * Flat {{tag}} -> value map for the closing templates, from the field store plus

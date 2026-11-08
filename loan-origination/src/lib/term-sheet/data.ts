@@ -3,10 +3,10 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { loadFieldValues } from "@/lib/fields";
 import { loadCompanyConfig } from "@/lib/company";
-import { buildTemplateData } from "@/lib/templates/docx";
+import { buildTemplateData, money } from "@/lib/templates/docx";
 
 /** Everything the LOI / term sheet needs, gathered from the loan record. */
-export type TermSheetData = {
+type TermSheetData = {
   date: string;
   greetingName: string; // "Hi {name},"
   loanAmount: number;
@@ -84,7 +84,7 @@ function label(map: Record<string, string>, raw: unknown, fallback = "—"): str
  * from company config, and the e-signature from custom_fields. Returns null if the
  * caller can't access the loan. Shared by the term-sheet PDF and the template routes.
  */
-export async function assembleTermSheetData(
+async function assembleTermSheetData(
   supabase: SupabaseClient,
   id: string,
 ): Promise<{ data: TermSheetData; loanNumber: string } | null> {
@@ -164,13 +164,17 @@ export async function buildLoiTemplateData(
   client: SupabaseClient,
   id: string,
 ): Promise<{ map: Record<string, string>; loanNumber: string; signed: boolean } | null> {
-  const assembled = await assembleTermSheetData(client, id);
+  // Independent reads — fetch the assembled term-sheet data and the base template map
+  // in parallel.
+  const [assembled, base] = await Promise.all([
+    assembleTermSheetData(client, id),
+    buildTemplateData(client, id),
+  ]);
   if (!assembled) return null;
-  const base = await buildTemplateData(client, id);
   const d = assembled.data;
 
-  const dollars = (n: number | null): string =>
-    n == null ? "" : `$${Math.round(n).toLocaleString("en-US")}`;
+  // Currency formatting reuses the template `money` helper; blanks stay blank.
+  const dollars = (n: number | null): string => (n == null ? "" : money(n));
   const gapFill = (tag: string, value: string) => {
     if ((!base[tag] || base[tag].trim() === "") && value && value !== "—") base[tag] = value;
   };
@@ -190,7 +194,7 @@ export async function buildLoiTemplateData(
   gapFill("loan_purpose", d.loanPurpose);
   gapFill("borrower_entity", d.entity);
   gapFill("principal_and_interest", dollars(d.monthlyPI));
-  gapFill("origination_fee_pct", d.originationPct != null ? `${d.originationPct}%` : "");
+  gapFill("origination_fee_pct", `${d.originationPct}%`);
 
   // Signature + audit-report fields. Filled only on a signed copy; on an unsigned copy
   // the acceptance lines stay blank (for wet signing) and the `signed` flag is empty, so

@@ -1,7 +1,8 @@
 import { redirect } from "next/navigation";
 import { getSessionProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { AppShell, type NavItem } from "@/components/app-shell";
+import { AppShell } from "@/components/app-shell";
+import { navFor } from "@/lib/nav";
 import { GlobalIntakeEditor } from "@/components/global-intake-editor";
 import type { QuoteField } from "@/lib/ai/intake";
 
@@ -23,10 +24,7 @@ export default async function GlobalIntakePage() {
     examples?: string | null;
   };
 
-  const nav: NavItem[] = [
-    { href: "/", label: "Pipeline", icon: "pipeline", match: "exact" },
-    { href: "/admin", label: "Settings", icon: "settings", match: "prefix" },
-  ];
+  const nav = navFor(session.profile);
 
   return (
     <AppShell email={session.profile?.email ?? ""} nav={nav}>
