@@ -44,7 +44,7 @@ export default async function LoanPage({
     ? ((
         await supabase
           .from("internal_notes")
-          .select("*")
+          .select("*, author:author_id(full_name,email)")
           .eq("loan_id", id)
           .order("created_at", { ascending: true })
       ).data as InternalNote[]) ?? []

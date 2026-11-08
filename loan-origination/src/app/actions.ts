@@ -524,7 +524,7 @@ export async function addInternalNote(input: {
   const { data, error } = await supabase
     .from("internal_notes")
     .insert({ loan_id: input.loanId, author_id: user.id, body })
-    .select("*")
+    .select("*, author:author_id(full_name,email)")
     .single();
   if (error || !data) return { ok: false, error: error?.message ?? "Couldn’t save the note." };
   return { ok: true, note: data as InternalNote };

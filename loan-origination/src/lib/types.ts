@@ -103,6 +103,7 @@ export type InternalNote = {
   author_id: string | null;
   body: string;
   created_at: string;
+  author?: { full_name: string | null; email: string | null } | null;
 };
 
 // A free-form deal contact without an app login (stored on loans.custom_fields.contacts).

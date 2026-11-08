@@ -63,8 +63,13 @@ export function NotesPanel({
         {notes.length === 0 && <p className="text-muted">No internal notes yet.</p>}
         {notes.map((n) => (
           <li key={n.id} className="card p-3.5">
+            <div className="mb-1 flex items-baseline justify-between gap-2 text-xs">
+              <span className="font-semibold text-fg">
+                {n.author?.full_name || n.author?.email || "Unknown"}
+              </span>
+              <span className="text-faint">{new Date(n.created_at).toLocaleString()}</span>
+            </div>
             <p className="whitespace-pre-wrap text-fg">{n.body}</p>
-            <div className="mt-1.5 text-xs text-faint">{new Date(n.created_at).toLocaleString()}</div>
           </li>
         ))}
       </ul>
