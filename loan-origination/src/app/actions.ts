@@ -21,6 +21,7 @@ import {
   type GlobalIntakeConfig,
   type QuoteField,
 } from "@/lib/ai/intake";
+import type { DealContact, InternalNote } from "@/lib/types";
 
 /**
  * Add Loan (R-UI-11): a lending-team user starts a new loan, which opens its chat.
@@ -501,6 +502,79 @@ export async function setLoanFieldLock(input: {
     locked: input.locked,
     actorId: user.id,
   });
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
+}
+
+// ---------- Internal notes (lending team only) ----------
+
+/** Add a team-only note to a loan. RLS enforces lending-team + loan access. */
+export async function addInternalNote(input: {
+  loanId: string;
+  body: string;
+}): Promise<{ ok: boolean; error?: string; note?: InternalNote }> {
+  const body = input.body.trim();
+  if (!body) return { ok: false, error: "Note is empty." };
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+
+  const { data, error } = await supabase
+    .from("internal_notes")
+    .insert({ loan_id: input.loanId, author_id: user.id, body })
+    .select("*")
+    .single();
+  if (error || !data) return { ok: false, error: error?.message ?? "Couldn’t save the note." };
+  return { ok: true, note: data as InternalNote };
+}
+
+// ---------- Deal contacts (extra people on the People tab) ----------
+
+/**
+ * Replace the loan's free-form contact list (stored on custom_fields.contacts).
+ * These are people without an app login — title/insurance/other contacts the team
+ * tracks. Fixed contacts (title/insurance) live in the field store; this is for the
+ * "add another" rows. Lending team only.
+ */
+export async function saveDealContacts(input: {
+  loanId: string;
+  contacts: DealContact[];
+}): Promise<{ ok: boolean; error?: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("is_lending_team")
+    .eq("id", user.id)
+    .single();
+  if (!profile?.is_lending_team) return { ok: false, error: "Lending team only." };
+
+  // RLS read confirms this user may access the loan before the service-role write.
+  const { data: loan } = await supabase
+    .from("loans")
+    .select("custom_fields")
+    .eq("id", input.loanId)
+    .single();
+  if (!loan) return { ok: false, error: "No access to this loan." };
+
+  const clean = input.contacts
+    .map((c) => ({
+      id: String(c.id || crypto.randomUUID()),
+      label: String(c.label ?? "").slice(0, 80),
+      name: String(c.name ?? "").slice(0, 120),
+      email: String(c.email ?? "").slice(0, 160),
+      phone: String(c.phone ?? "").slice(0, 60),
+    }))
+    .filter((c) => c.label || c.name || c.email || c.phone);
+
+  const admin = createServiceRoleClient();
+  const custom = { ...((loan.custom_fields as Record<string, unknown>) ?? {}), contacts: clean };
+  const { error } = await admin.from("loans").update({ custom_fields: custom }).eq("id", input.loanId);
   if (error) return { ok: false, error: error.message };
   return { ok: true };
 }

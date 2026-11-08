@@ -4,14 +4,15 @@ import { useState, type ReactNode } from "react";
 import { saveLoanField, setLoanFieldLock, syncLoanToSheet } from "@/app/actions";
 import type { FieldDef, FieldValues, Loan } from "@/lib/types";
 
-const SECTION_ORDER = ["loan", "property", "borrower", "guarantor", "contact", "trade"];
+// Two balanced columns of cards. Contacts live on the People tab, so they're not here.
+const LEFT_SECTIONS = ["loan", "borrower", "guarantor"];
+const RIGHT_SECTIONS = ["property", "trade"];
 const SECTION_LABEL: Record<string, string> = {
-  loan: "Loan",
-  property: "Property",
-  borrower: "Borrower",
+  loan: "Loan Info",
+  property: "Property Info",
+  borrower: "Borrower Info",
   guarantor: "Guarantor",
-  contact: "Contacts",
-  trade: "Trade",
+  trade: "Trade Info",
 };
 
 const str = (v: unknown) => (v == null ? "" : String(v));
@@ -50,39 +51,45 @@ export function LoanData({
     setStatus(res.ok ? (locked ? `Locked ${def.label}` : `Unlocked ${def.label}`) : res.error ?? "Failed");
   }
 
+  function sectionCard(section: string) {
+    const inSection = defs.filter((d) => d.section === section).sort((a, b) => a.sort - b.sort);
+    if (inSection.length === 0) return null;
+    return (
+      <section key={section} className="card overflow-hidden">
+        <h3 className="border-b border-line bg-surface-2 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-muted">
+          {SECTION_LABEL[section] ?? section}
+        </h3>
+        <div className="divide-y divide-line">
+          {inSection.map((def) => (
+            <FieldRow
+              key={def.key}
+              def={def}
+              cell={values[def.key]}
+              canEdit={canEdit}
+              isLender={isLender}
+              onSave={(kind, v) => save(def, kind, v)}
+              onLock={(locked) => toggleLock(def, locked)}
+            />
+          ))}
+        </div>
+      </section>
+    );
+  }
+
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-3">
       {!canEdit && <p className="text-xs text-muted">Read-only</p>}
       {canEdit && <SheetSync loanId={loan.id} />}
-      {SECTION_ORDER.map((section) => {
-        const inSection = defs.filter((d) => d.section === section).sort((a, b) => a.sort - b.sort);
-        if (inSection.length === 0) return null;
-        return (
-          <section key={section}>
-            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">
-              {SECTION_LABEL[section] ?? section}
-            </h3>
-            <div className="flex flex-col gap-3">
-              {inSection.map((def) => (
-                <FieldRow
-                  key={def.key}
-                  def={def}
-                  cell={values[def.key]}
-                  canEdit={canEdit}
-                  isLender={isLender}
-                  onSave={(kind, v) => save(def, kind, v)}
-                  onLock={(locked) => toggleLock(def, locked)}
-                />
-              ))}
-            </div>
-          </section>
-        );
-      })}
+      <div className="grid items-start gap-3 lg:grid-cols-2">
+        <div className="flex flex-col gap-3">{LEFT_SECTIONS.map(sectionCard)}</div>
+        <div className="flex flex-col gap-3">{RIGHT_SECTIONS.map(sectionCard)}</div>
+      </div>
       {status && <p className="text-xs text-muted">{status}</p>}
     </div>
   );
 }
 
+/** One dense spreadsheet-style row: a label cell on the left, the value/editor on the right. */
 function FieldRow({
   def,
   cell,
@@ -98,121 +105,134 @@ function FieldRow({
   onSave: (kind: "initial" | "verified", value: string) => void;
   onLock: (locked: boolean) => void;
 }) {
-  const [initial, setInitial] = useState(str(cell?.initial));
-  const [verified, setVerified] = useState(str(cell?.verified));
   const locked = cell?.locked ?? false;
   const calculated = def.source === "calculated";
   const current = str(cell?.current);
+  const showLock = canEdit && isLender && def.verifiable;
 
-  // Calculated or read-only viewer: show the current value only.
+  // Calculated or read-only viewer: label | value.
   if (calculated || !canEdit) {
     return (
-      <div>
-        <div className="flex items-center gap-2 text-muted">
-          {def.label}
-          {calculated && <Badge>auto</Badge>}
-        </div>
-        <div className="font-medium">{current || "—"}</div>
-      </div>
+      <Row label={def.label} badge={calculated ? "auto" : undefined}>
+        <span className="block truncate px-2 py-1.5 text-sm text-fg">{current || "—"}</span>
+      </Row>
     );
   }
 
-  const editable = !locked;
+  // Verifiable (lender): Initial | Verified side by side in the value cell.
+  if (def.verifiable && isLender) {
+    return (
+      <Row label={def.label} locked={locked} onLock={() => onLock(!locked)} showLock={showLock}>
+        <div className="grid grid-cols-2 divide-x divide-line">
+          <CellInput def={def} base={str(cell?.initial)} disabled={locked} placeholder="Initial" onCommit={(v) => onSave("initial", v)} />
+          <CellInput def={def} base={str(cell?.verified)} disabled={locked} placeholder="Verified" onCommit={(v) => onSave("verified", v)} />
+        </div>
+      </Row>
+    );
+  }
+
+  // Editable single value.
   return (
-    <div className="flex flex-col gap-1">
-      <div className="flex items-center gap-2">
-        <span className="text-muted">{def.label}</span>
-        {def.verifiable && <Badge>verifiable</Badge>}
-        {locked && <Badge tone="lock">locked</Badge>}
-        {isLender && def.verifiable && (
+    <Row label={def.label} locked={locked}>
+      <CellInput def={def} base={str(cell?.initial)} disabled={locked} onCommit={(v) => onSave("initial", v)} />
+    </Row>
+  );
+}
+
+function Row({
+  label,
+  children,
+  badge,
+  locked,
+  onLock,
+  showLock,
+}: {
+  label: string;
+  children: ReactNode;
+  badge?: string;
+  locked?: boolean;
+  onLock?: () => void;
+  showLock?: boolean;
+}) {
+  return (
+    <div className="grid grid-cols-[42%_1fr] items-stretch">
+      <div className="flex items-center gap-1 border-r border-line bg-surface-2/50 px-2.5 py-1.5">
+        <span className="truncate text-xs text-muted" title={label}>
+          {label}
+        </span>
+        {badge && <span className="chip px-1 py-0 text-[9px] uppercase">{badge}</span>}
+        {locked && (
+          <span aria-hidden title="Locked" className="text-[10px]" style={{ color: "var(--status-outstanding)" }}>
+            🔒
+          </span>
+        )}
+        {showLock && onLock && (
           <button
             type="button"
-            onClick={() => onLock(!locked)}
-            className="ml-auto text-xs underline text-muted"
+            onClick={onLock}
+            className="ml-auto text-[10px] text-faint underline hover:text-fg"
           >
             {locked ? "Unlock" : "Lock"}
           </button>
         )}
       </div>
-
-      <div className={def.verifiable ? "grid grid-cols-2 gap-2" : ""}>
-        <Input
-          label={def.verifiable ? "Initial" : undefined}
-          def={def}
-          value={initial}
-          baseline={str(cell?.initial)}
-          setValue={setInitial}
-          disabled={!editable}
-          onCommit={(v) => onSave("initial", v)}
-        />
-        {def.verifiable && isLender && (
-          <Input
-            label="Verified"
-            def={def}
-            value={verified}
-            baseline={str(cell?.verified)}
-            setValue={setVerified}
-            disabled={!editable}
-            onCommit={(v) => onSave("verified", v)}
-          />
-        )}
-      </div>
-      {def.verifiable && <div className="text-xs text-muted">Current: {current || "—"}</div>}
+      <div className="min-w-0">{children}</div>
     </div>
   );
 }
 
-function Input({
-  label,
+/** Borderless cell editor (text/number/date/select) that fills its grid cell. Commits on blur/change. */
+function CellInput({
   def,
-  value,
-  baseline,
-  setValue,
+  base,
   disabled,
+  placeholder,
   onCommit,
 }: {
-  label?: string;
   def: FieldDef;
-  value: string;
-  baseline: string;
-  setValue: (v: string) => void;
+  base: string;
   disabled: boolean;
+  placeholder?: string;
   onCommit: (v: string) => void;
 }) {
+  const [value, setValue] = useState(base);
+  const cls =
+    "w-full bg-transparent px-2 py-1.5 text-sm text-fg outline-none focus:bg-gold/5 disabled:opacity-50";
+
+  if (def.type === "select") {
+    return (
+      <select
+        value={value}
+        disabled={disabled}
+        onChange={(e) => {
+          setValue(e.target.value);
+          onCommit(e.target.value);
+        }}
+        className={`${cls} appearance-none`}
+      >
+        <option value="">—</option>
+        {def.options.map((o) => (
+          <option key={o} value={o}>
+            {o}
+          </option>
+        ))}
+      </select>
+    );
+  }
+
   const inputType = def.type === "date" ? "date" : def.type === "number" ? "number" : "text";
   return (
-    <label className="flex flex-col gap-0.5">
-      {label && <span className="text-xs text-muted">{label}</span>}
-      {def.type === "select" ? (
-        <select
-          value={value}
-          disabled={disabled}
-          onChange={(e) => {
-            setValue(e.target.value);
-            onCommit(e.target.value);
-          }}
-          className="field select w-full text-sm disabled:opacity-50"
-        >
-          <option value="">—</option>
-          {def.options.map((o) => (
-            <option key={o} value={o}>
-              {o}
-            </option>
-          ))}
-        </select>
-      ) : (
-        <input
-          type={inputType}
-          value={value}
-          disabled={disabled}
-          onChange={(e) => setValue(e.target.value)}
-          onBlur={() => {
-            if (value !== baseline) onCommit(value);
-          }}
-          className="field w-full text-sm disabled:opacity-50"
-        />
-      )}
-    </label>
+    <input
+      type={inputType}
+      value={value}
+      disabled={disabled}
+      placeholder={placeholder}
+      onChange={(e) => setValue(e.target.value)}
+      onBlur={() => {
+        if (value !== base) onCommit(value);
+      }}
+      className={cls}
+    />
   );
 }
 
@@ -240,16 +260,5 @@ function SheetSync({ loanId }: { loanId: string }) {
       )}
       {err && <span style={{ color: "var(--status-outstanding)" }}>{err}</span>}
     </div>
-  );
-}
-
-function Badge({ children, tone }: { children: ReactNode; tone?: "lock" }) {
-  return (
-    <span
-      className="chip text-[10px] uppercase tracking-wide"
-      style={tone === "lock" ? { color: "var(--status-outstanding)", background: "var(--status-outstanding-bg)" } : undefined}
-    >
-      {children}
-    </span>
   );
 }

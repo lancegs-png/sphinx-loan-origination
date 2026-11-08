@@ -104,3 +104,12 @@ export type InternalNote = {
   body: string;
   created_at: string;
 };
+
+// A free-form deal contact without an app login (stored on loans.custom_fields.contacts).
+export type DealContact = {
+  id: string;
+  label: string; // e.g. "Title / closing agent", "Appraiser"
+  name: string;
+  email: string;
+  phone: string;
+};

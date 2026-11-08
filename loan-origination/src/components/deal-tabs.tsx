@@ -2,12 +2,16 @@
 
 import { useState } from "react";
 import { Chat } from "./chat";
+import { FloatingChat } from "./floating-chat";
 import { LoanData } from "./loan-data";
 import { QuotePanel } from "./quote-panel";
 import { DocumentsPanel } from "./documents-panel";
 import { TemplatesPanel } from "./templates-panel";
+import { PeoplePanel } from "./people-panel";
+import { NotesPanel } from "./notes-panel";
 import type {
   ChecklistItem,
+  DealContact,
   FieldDef,
   FieldValues,
   InternalNote,
@@ -16,18 +20,12 @@ import type {
   Participant,
 } from "@/lib/types";
 
-type Tab = "chat" | "loan" | "documents" | "people" | "quote" | "templates" | "notes";
-
-function participantRoleLabel(role: string) {
-  if (role === "lending_team") return "Lending team";
-  if (role === "originator") return "Originator";
-  if (role === "borrower") return "Borrower";
-  return role;
-}
+type Tab = "loan" | "chat" | "documents" | "people" | "quote" | "templates" | "notes";
 
 /**
- * The deal workspace as a single tabbed surface: Chat lives alongside the loan
- * panels in one tab bar, and the active tab fills the content area full-width.
+ * The deal workspace as a single tabbed surface. Loan Info is the landing tab; the
+ * agent chat is both its own full-height tab and a floating popup reachable from any
+ * other tab (so the deal can be updated by chat without leaving the current view).
  * Lender-only tabs (Quote, Templates, Internal Notes) are hidden from borrowers.
  */
 export function DealTabs({
@@ -57,11 +55,11 @@ export function DealTabs({
   checklist: ChecklistItem[];
   atProcessing: boolean;
 }) {
-  const [tab, setTab] = useState<Tab>("chat");
+  const [tab, setTab] = useState<Tab>("loan");
 
   const tabs: { key: Tab; label: string; lenderOnly?: boolean }[] = [
-    { key: "chat", label: "Chat" },
     { key: "loan", label: "Loan Info" },
+    { key: "chat", label: "Chat" },
     { key: "documents", label: "Documents" },
     { key: "people", label: "People" },
     { key: "quote", label: "Quote", lenderOnly: true },
@@ -69,9 +67,20 @@ export function DealTabs({
     { key: "notes", label: "Internal Notes", lenderOnly: true },
   ];
 
+  const extraContacts = (loan.custom_fields?.contacts as DealContact[] | undefined) ?? [];
+
+  const chatProps = {
+    loanId: loan.id,
+    initialMessages: messages,
+    currentUserId,
+    currentRole,
+    isLender,
+    intakeMode,
+  };
+
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-surface">
-      {/* Tab bar — Chat + every loan panel in one menu */}
+      {/* Tab bar */}
       <div className="flex gap-1 overflow-x-auto border-b border-line px-4 sm:px-6">
         {tabs
           .filter((t) => !t.lenderOnly || isLender)
@@ -92,83 +101,69 @@ export function DealTabs({
           })}
       </div>
 
-      {/* Chat fills + scrolls itself; the other panels get a centered, scrollable column */}
-      {tab === "chat" ? (
-        <div className="mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col">
-          <Chat
-            loanId={loan.id}
-            initialMessages={messages}
-            currentUserId={currentUserId}
-            currentRole={currentRole}
-            isLender={isLender}
-            intakeMode={intakeMode}
-          />
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        {/* Chat tab — kept mounted so its thread stays in sync with the popup */}
+        <div className={tab === "chat" ? "mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col" : "hidden"}>
+          <Chat {...chatProps} />
         </div>
-      ) : (
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          <div className="mx-auto max-w-4xl px-4 py-6 text-sm sm:px-6">
-            {tab === "loan" && (
-              <LoanData
-                loan={loan}
-                fieldDefs={fieldDefs}
-                values={fieldValues}
-                canEdit={isLender}
-                isLender={isLender}
-              />
-            )}
 
-            {tab === "documents" && (
-              <DocumentsPanel
-                loanId={loan.id}
-                items={checklist}
-                canEdit={isLender}
-                canGenerate={isLender && atProcessing}
-              />
-            )}
+        {/* Data panels — Loan Info gets extra width for its dense, spreadsheet-style grid */}
+        {tab !== "chat" && (
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <div
+              className={`mx-auto px-4 py-6 text-sm sm:px-6 ${
+                tab === "loan" ? "max-w-7xl" : "max-w-5xl"
+              }`}
+            >
+              {tab === "loan" && (
+                <LoanData
+                  loan={loan}
+                  fieldDefs={fieldDefs}
+                  values={fieldValues}
+                  canEdit={isLender}
+                  isLender={isLender}
+                />
+              )}
 
-            {tab === "people" && (
-              <ul className="space-y-3">
-                {participants.map((p) => (
-                  <li key={p.user_id} className="card p-3.5">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="font-semibold text-fg">
-                        {p.profiles?.full_name ?? p.profiles?.email ?? "—"}
-                      </span>
-                      <span className="chip">{participantRoleLabel(p.participant_role)}</span>
-                    </div>
-                    {p.profiles?.email && <div className="mt-1 text-muted">{p.profiles.email}</div>}
-                    {p.profiles?.phone && <div className="text-muted">{p.profiles.phone}</div>}
-                  </li>
-                ))}
-              </ul>
-            )}
+              {tab === "documents" && (
+                <DocumentsPanel
+                  loanId={loan.id}
+                  items={checklist}
+                  canEdit={isLender}
+                  canGenerate={isLender && atProcessing}
+                />
+              )}
 
-            {tab === "quote" && isLender && <QuotePanel loan={loan} values={fieldValues} />}
+              {tab === "people" && (
+                <PeoplePanel
+                  loanId={loan.id}
+                  participants={participants}
+                  values={fieldValues}
+                  initialContacts={extraContacts}
+                  canEdit={isLender}
+                />
+              )}
 
-            {tab === "templates" && isLender && (
-              <TemplatesPanel
-                loanId={loan.id}
-                programKey={loan.loan_program ?? loan.loan_type}
-                values={fieldValues}
-              />
-            )}
+              {tab === "quote" && isLender && <QuotePanel loan={loan} values={fieldValues} />}
 
-            {tab === "notes" && isLender && (
-              <ul className="space-y-3">
-                {internalNotes.length === 0 && <p className="text-muted">No internal notes.</p>}
-                {internalNotes.map((n) => (
-                  <li key={n.id} className="card p-3.5">
-                    <p className="whitespace-pre-wrap text-fg">{n.body}</p>
-                    <div className="mt-1.5 text-xs text-faint">
-                      {new Date(n.created_at).toLocaleString()}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
+              {tab === "templates" && isLender && (
+                <TemplatesPanel
+                  loanId={loan.id}
+                  programKey={loan.loan_program ?? loan.loan_type}
+                  values={fieldValues}
+                />
+              )}
+
+              {tab === "notes" && isLender && (
+                <NotesPanel loanId={loan.id} initialNotes={internalNotes} />
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
+
+      {/* Floating chat — available from every tab except the full Chat tab */}
+      <FloatingChat dormant={tab === "chat"} {...chatProps} />
     </div>
   );
 }
