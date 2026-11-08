@@ -4,16 +4,33 @@ import { useState, type ReactNode } from "react";
 import { saveLoanField, setLoanFieldLock, syncLoanToSheet } from "@/app/actions";
 import type { FieldDef, FieldValues, Loan } from "@/lib/types";
 
-// Two balanced columns of cards. Contacts live on the People tab, so they're not here.
-const LEFT_SECTIONS = ["loan", "borrower", "guarantor"];
-const RIGHT_SECTIONS = ["property", "trade"];
+// Left column holds the other sections; the right column holds the curated Loan Info
+// card and its overflow ("Additional Loan Info"). Contacts live on the People tab.
+const LEFT_SECTIONS = ["property", "borrower", "guarantor", "trade"];
 const SECTION_LABEL: Record<string, string> = {
-  loan: "Loan Info",
   property: "Property Info",
   borrower: "Borrower Info",
   guarantor: "Guarantor",
   trade: "Trade Info",
 };
+
+// The curated Loan Info card: these keys (with short labels), in this order. Everything
+// else in the loan section drops to the "Additional Loan Info" card below it.
+const PRIMARY_LOAN: { key: string; label: string }[] = [
+  { key: "application_date", label: "Start Date" },
+  { key: "product_type", label: "Product Type" },
+  { key: "loan_amount", label: "Loan Amount" },
+  { key: "loan_purpose", label: "Loan Purpose" },
+  { key: "interest_rate", label: "Rate" },
+  { key: "prepay_term_months", label: "Prepay Term" },
+  { key: "prepay_type", label: "Prepay Type" },
+  { key: "ltv", label: "Leverage" },
+  { key: "origination_fee_pct", label: "Origination" },
+  { key: "loan_term_months", label: "Loan Term" },
+  { key: "as_is_value", label: "Appraised Value" },
+  { key: "io_months", label: "Interest Only Months" },
+];
+const PRIMARY_LOAN_KEYS = new Set(PRIMARY_LOAN.map((p) => p.key));
 
 const str = (v: unknown) => (v == null ? "" : String(v));
 
@@ -62,30 +79,67 @@ export function LoanData({
     setStatus(res.ok ? (locked ? `Locked ${def.label}` : `Unlocked ${def.label}`) : res.error ?? "Failed");
   }
 
-  function sectionCard(section: string) {
-    const inSection = defs.filter((d) => d.section === section).sort((a, b) => a.sort - b.sort);
-    if (inSection.length === 0) return null;
+  const byKey = new Map(defs.map((d) => [d.key, d]));
+
+  function cardShell(key: string, title: string, children: ReactNode) {
     return (
-      <section key={section} className="card overflow-hidden">
+      <section key={key} className="card overflow-hidden">
         <h3 className="border-b border-line bg-surface-2 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-muted">
-          {SECTION_LABEL[section] ?? section}
+          {title}
         </h3>
-        <div className="divide-y divide-line">
-          {inSection.map((def) => (
-            <FieldRow
-              key={def.key}
-              def={def}
-              cell={values[def.key]}
-              canEdit={canEdit}
-              isLender={isLender}
-              onSave={(kind, v) => save(def, kind, v)}
-              onLock={(locked) => toggleLock(def, locked)}
-            />
-          ))}
-        </div>
+        <div className="divide-y divide-line">{children}</div>
       </section>
     );
   }
+
+  function row(def: FieldDef, label?: string) {
+    return (
+      <FieldRow
+        key={def.key}
+        def={label ? { ...def, label } : def}
+        cell={values[def.key]}
+        canEdit={canEdit}
+        isLender={isLender}
+        onSave={(kind, v) => save(def, kind, v)}
+        onLock={(locked) => toggleLock(def, locked)}
+      />
+    );
+  }
+
+  // Non-loan sections, minus any field pulled into the curated Loan Info card.
+  function sectionCard(section: string) {
+    const inSection = defs
+      .filter((d) => d.section === section && !PRIMARY_LOAN_KEYS.has(d.key))
+      .sort((a, b) => a.sort - b.sort);
+    if (inSection.length === 0) return null;
+    return cardShell(section, SECTION_LABEL[section] ?? section, inSection.map((d) => row(d)));
+  }
+
+  // Curated Loan Info card: a read-only Loan Number pulled from the loan record, then
+  // the chosen fields in order.
+  const loanCard = cardShell(
+    "loan",
+    "Loan Info",
+    <>
+      <Row label="Loan Number">
+        <span className="block truncate px-2 py-1.5 text-sm text-fg">
+          {loan.loan_number ?? loan.opportunity_number ?? "—"}
+        </span>
+      </Row>
+      {PRIMARY_LOAN.map((p) => {
+        const def = byKey.get(p.key);
+        return def ? row(def, p.label) : null;
+      })}
+    </>,
+  );
+
+  // Everything else in the loan section → Additional Loan Info.
+  const additional = defs
+    .filter((d) => d.section === "loan" && !PRIMARY_LOAN_KEYS.has(d.key))
+    .sort((a, b) => a.sort - b.sort);
+  const additionalCard = additional.length
+    ? cardShell("additional_loan", "Additional Loan Info", additional.map((d) => row(d)))
+    : null;
 
   return (
     <div className="flex flex-col gap-3">
@@ -93,7 +147,10 @@ export function LoanData({
       {canEdit && <SheetSync loanId={loan.id} />}
       <div className="grid items-start gap-3 lg:grid-cols-2">
         <div className="flex flex-col gap-3">{LEFT_SECTIONS.map(sectionCard)}</div>
-        <div className="flex flex-col gap-3">{RIGHT_SECTIONS.map(sectionCard)}</div>
+        <div className="flex flex-col gap-3">
+          {loanCard}
+          {additionalCard}
+        </div>
       </div>
       {status && <p className="text-xs text-muted">{status}</p>}
     </div>
