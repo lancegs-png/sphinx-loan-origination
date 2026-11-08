@@ -4,9 +4,7 @@ import { useState, type ReactNode } from "react";
 import { saveLoanField, setLoanFieldLock, syncLoanToSheet } from "@/app/actions";
 import type { FieldDef, FieldValues, Loan } from "@/lib/types";
 
-// Left column holds the other sections; the right column holds the curated Loan Info
-// card and its overflow ("Additional Loan Info"). Contacts live on the People tab.
-const LEFT_SECTIONS = ["property", "borrower", "guarantor", "trade"];
+// Column placement is set explicitly in the layout below. Contacts live on the People tab.
 const SECTION_LABEL: Record<string, string> = {
   property: "Property Info",
   borrower: "Borrower Info",
@@ -146,9 +144,14 @@ export function LoanData({
       {!canEdit && <p className="text-xs text-muted">Read-only</p>}
       {canEdit && <SheetSync loanId={loan.id} />}
       <div className="grid items-start gap-3 lg:grid-cols-2">
-        <div className="flex flex-col gap-3">{LEFT_SECTIONS.map(sectionCard)}</div>
         <div className="flex flex-col gap-3">
           {loanCard}
+          {sectionCard("trade")}
+        </div>
+        <div className="flex flex-col gap-3">
+          {sectionCard("property")}
+          {sectionCard("borrower")}
+          {sectionCard("guarantor")}
           {additionalCard}
         </div>
       </div>
