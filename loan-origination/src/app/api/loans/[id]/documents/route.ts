@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { driveConfigured, createDealFolder, uploadFileToDrive } from "@/lib/google/drive";
+import { logEvent } from "@/lib/audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -102,6 +103,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       return new Response(`Save failed: ${insErr.message}`, { status: 500 });
     }
     created.push(row);
+    await logEvent(admin, {
+      loanId,
+      actorId: user.id,
+      eventType: "document_uploaded",
+      payload: { file_name: file.name, checklist_item_id: checklistItemId },
+    });
   }
 
   return Response.json({ ok: true, documents: created });

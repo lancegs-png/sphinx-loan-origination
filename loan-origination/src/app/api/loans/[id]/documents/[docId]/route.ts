@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { deleteDriveFile } from "@/lib/google/drive";
+import { logEvent } from "@/lib/audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -45,7 +46,7 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
 
   const { data: doc } = await supabase
     .from("loan_documents")
-    .select("storage_path,drive_file_id")
+    .select("storage_path,drive_file_id,file_name")
     .eq("id", docId)
     .eq("loan_id", loanId)
     .single();
@@ -63,6 +64,12 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
       /* best-effort */
     }
   }
+  await logEvent(admin, {
+    loanId,
+    actorId: user.id,
+    eventType: "document_deleted",
+    payload: { file_name: doc.file_name },
+  });
 
   return Response.json({ ok: true });
 }

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { StageBar } from "./stage-bar";
 import { DealTabs } from "./deal-tabs";
+import type { ActivityEvent } from "@/lib/activity";
 import type {
   ChecklistItem,
   FieldDef,
@@ -25,6 +26,8 @@ export function DealView({
   fieldValues,
   checklist,
   documents,
+  activity,
+  fieldLabels,
   atProcessing,
 }: {
   loan: Loan;
@@ -39,6 +42,8 @@ export function DealView({
   fieldValues: FieldValues;
   checklist: ChecklistItem[];
   documents: LoanDocument[];
+  activity: ActivityEvent[];
+  fieldLabels: Record<string, string>;
   atProcessing: boolean;
 }) {
   return (
@@ -91,6 +96,8 @@ export function DealView({
         fieldValues={fieldValues}
         checklist={checklist}
         documents={documents}
+        activity={activity}
+        fieldLabels={fieldLabels}
         atProcessing={atProcessing}
       />
     </div>

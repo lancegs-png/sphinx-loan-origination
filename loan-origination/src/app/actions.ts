@@ -12,6 +12,7 @@ import {
 import { recomputeLoan } from "@/lib/calc";
 import { sheetsConfigured, createLoanSheet, writeSheetValues, sheetUrl } from "@/lib/google/sheets";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
+import { logEvent } from "@/lib/audit";
 import { answerLoanQuestion } from "@/lib/ai/record-keeper";
 import {
   runIntakeTurn,
@@ -66,6 +67,12 @@ export async function addLoan() {
     sender_kind: "ai",
     sender_role: "ai",
     body: "Let’s set up this loan. First — are you the borrower, or an originator (broker / referral partner)? And who is the borrower?",
+  });
+
+  await logEvent(createServiceRoleClient(), {
+    loanId: loan.id,
+    actorId: user.id,
+    eventType: "loan_created",
   });
 
   redirect(`/loans/${loan.id}`);
@@ -189,6 +196,12 @@ export async function intakeTurn(
     } catch {
       /* calc is best-effort */
     }
+    await logEvent(admin, {
+      loanId,
+      actorKind: "ai",
+      eventType: "intake_recorded",
+      payload: { fields: Object.keys(intakeRaw) },
+    });
   }
 
   const { error } = await admin.from("messages").insert({
@@ -314,6 +327,7 @@ export async function postQuoteToChat(
     payload: { proceed: true },
   });
   if (error) return { ok: false, error: error.message };
+  await logEvent(admin, { loanId, actorId: user.id, eventType: "quote_posted" });
   return { ok: true };
 }
 
@@ -355,6 +369,7 @@ export async function generateTermSheet(loanId: string): Promise<{ ok: boolean; 
     },
   });
   if (error) return { ok: false, error: error.message };
+  await logEvent(admin, { loanId, actorId: user?.id ?? null, eventType: "term_sheet_generated" });
   return { ok: true };
 }
 
@@ -416,6 +431,12 @@ export async function signTermSheet(loanId: string): Promise<{ ok: boolean; erro
     },
   });
   if (error) return { ok: false, error: error.message };
+  await logEvent(admin, {
+    loanId,
+    actorId: user.id,
+    eventType: "term_sheet_signed",
+    payload: { loan_number: loanNumber, signed_by: name },
+  });
   return { ok: true };
 }
 
@@ -464,17 +485,48 @@ export async function saveLoanField(input: {
   } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: "Not signed in." };
 
+  const idx = input.idx ?? 1;
+  const valueKind = input.valueKind ?? "initial";
+  const col = valueKind === "verified" ? "verified_value" : "initial_value";
+
+  // Capture the old value so the activity log can show before → after.
+  const { data: prev } = await supabase
+    .from("loan_field_values")
+    .select("initial_value,verified_value")
+    .eq("loan_id", input.loanId)
+    .eq("field_key", input.key)
+    .eq("idx", idx)
+    .maybeSingle();
+  const oldValue = prev ? (prev as Record<string, unknown>)[col] : undefined;
+
   const raw = normalizeFieldValue(input.key, input.type, input.value);
   const value = coerceForType(input.type, raw);
   const { error } = await upsertFieldValue(supabase, {
     loanId: input.loanId,
     key: input.key,
-    idx: input.idx ?? 1,
-    valueKind: input.valueKind ?? "initial",
+    idx,
+    valueKind,
     value,
     actorId: user.id,
   });
   if (error) return { ok: false, error: error.message };
+
+  // Log the change (internal) when the value actually changed.
+  if (JSON.stringify(oldValue ?? null) !== JSON.stringify(value ?? null)) {
+    await logEvent(createServiceRoleClient(), {
+      loanId: input.loanId,
+      actorId: user.id,
+      eventType: "field_updated",
+      isInternal: true,
+      payload: {
+        key: input.key,
+        idx,
+        old: oldValue ?? null,
+        new: value ?? null,
+      },
+    });
+  }
+
   // Recompute calculated fields from the new inputs (never blocks the save).
   try {
     await recomputeLoan(input.loanId);

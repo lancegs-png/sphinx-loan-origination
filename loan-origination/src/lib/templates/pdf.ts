@@ -71,3 +71,24 @@ export async function docxToPdf(docx: Buffer): Promise<Buffer> {
     await rm(dir, { recursive: true, force: true });
   }
 }
+
+/** Convert an HTML string to PDF via LibreOffice headless (e.g. the activity log). */
+export async function htmlToPdf(html: string): Promise<Buffer> {
+  const bin = await sofficeBin();
+  if (!bin) {
+    throw new Error(
+      "PDF export needs LibreOffice. Install it (e.g. `brew install --cask libreoffice`) and retry.",
+    );
+  }
+  const dir = await mkdtemp(path.join(tmpdir(), "log-"));
+  const inPath = path.join(dir, "log.html");
+  await writeFile(inPath, html, "utf8");
+  try {
+    await execFileP(bin, ["--headless", "--convert-to", "pdf:writer_pdf_Export", "--outdir", dir, inPath], {
+      timeout: 60_000,
+    });
+    return await readFile(path.join(dir, "log.pdf"));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}

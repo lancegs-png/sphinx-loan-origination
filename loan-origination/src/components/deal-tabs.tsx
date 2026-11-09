@@ -9,6 +9,8 @@ import { DocumentsPanel } from "./documents-panel";
 import { TemplatesPanel } from "./templates-panel";
 import { PeoplePanel } from "./people-panel";
 import { NotesPanel } from "./notes-panel";
+import { ActivityPanel } from "./activity-panel";
+import type { ActivityEvent } from "@/lib/activity";
 import type {
   ChecklistItem,
   DealContact,
@@ -21,7 +23,7 @@ import type {
   Participant,
 } from "@/lib/types";
 
-type Tab = "loan" | "chat" | "documents" | "people" | "quote" | "templates" | "notes";
+type Tab = "loan" | "chat" | "documents" | "people" | "quote" | "templates" | "notes" | "activity";
 
 /**
  * The deal workspace as a single tabbed surface. Loan Info is the landing tab; the
@@ -42,6 +44,8 @@ export function DealTabs({
   fieldValues,
   checklist,
   documents,
+  activity,
+  fieldLabels,
   atProcessing,
 }: {
   loan: Loan;
@@ -56,6 +60,8 @@ export function DealTabs({
   fieldValues: FieldValues;
   checklist: ChecklistItem[];
   documents: LoanDocument[];
+  activity: ActivityEvent[];
+  fieldLabels: Record<string, string>;
   atProcessing: boolean;
 }) {
   const [tab, setTab] = useState<Tab>("loan");
@@ -68,6 +74,7 @@ export function DealTabs({
     { key: "quote", label: "Quote", lenderOnly: true },
     { key: "templates", label: "Templates", lenderOnly: true },
     { key: "notes", label: "Internal Notes", lenderOnly: true },
+    { key: "activity", label: "Activity", lenderOnly: true },
   ];
 
   const extraContacts = (loan.custom_fields?.contacts as DealContact[] | undefined) ?? [];
@@ -160,6 +167,10 @@ export function DealTabs({
 
               {tab === "notes" && isLender && (
                 <NotesPanel loanId={loan.id} initialNotes={internalNotes} />
+              )}
+
+              {tab === "activity" && isLender && (
+                <ActivityPanel loanId={loan.id} events={activity} fieldLabels={fieldLabels} />
               )}
             </div>
           </div>

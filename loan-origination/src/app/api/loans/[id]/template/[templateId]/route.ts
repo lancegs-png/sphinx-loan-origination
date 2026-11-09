@@ -5,6 +5,7 @@ import { loadCompanyConfig } from "@/lib/company";
 import { buildDataTapeCsv } from "@/lib/templates/data-tape";
 import { buildTemplateData, fillDocx } from "@/lib/templates/docx";
 import { docxToPdf } from "@/lib/templates/pdf";
+import { logEvent } from "@/lib/audit";
 import { TEMPLATES } from "@/lib/templates/registry";
 
 const DOCX_TEMPLATES = new Set([
@@ -41,6 +42,18 @@ export async function GET(
   if (!loan) return new Response("Not found", { status: 404 });
   const ref = loan.loan_number ?? loan.opportunity_number;
   const street = (loan.property_address || ref).split(",")[0].trim();
+
+  // Log the download (internal). def.name falls back to the id.
+  await logEvent(createServiceRoleClient(), {
+    loanId: id,
+    actorId: user.id,
+    eventType: "template_downloaded",
+    isInternal: true,
+    payload: {
+      template: (def as { name?: string }).name ?? def.id,
+      format: def.id === "data_tape" ? "csv" : asPdf ? "pdf" : "docx",
+    },
+  });
 
   // Data tape: one row per property, exact Data Tape Map columns, blanks stay blank.
   if (def.id === "data_tape") {
