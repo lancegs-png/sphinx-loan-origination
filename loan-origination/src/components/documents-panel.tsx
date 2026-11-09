@@ -41,6 +41,7 @@ export function DocumentsPanel({
   const [docs, setDocs] = useState<LoanDocument[]>(documents);
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState<string | null>(null);
+  const [dragItem, setDragItem] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
 
   const docsByItem = useMemo(() => {
@@ -159,13 +160,54 @@ export function DocumentsPanel({
                   .map((r) => {
                     const files = docsByItem.get(r.id) ?? [];
                     return (
-                      <div key={r.id}>
+                      <div
+                        key={r.id}
+                        onDragOver={
+                          canEdit
+                            ? (e) => {
+                                e.preventDefault();
+                                setDragItem(r.id);
+                              }
+                            : undefined
+                        }
+                        onDragLeave={
+                          canEdit ? () => setDragItem((d) => (d === r.id ? null : d)) : undefined
+                        }
+                        onDrop={
+                          canEdit
+                            ? (e) => {
+                                e.preventDefault();
+                                setDragItem(null);
+                                if (e.dataTransfer.files?.length) upload(r.id, e.dataTransfer.files);
+                              }
+                            : undefined
+                        }
+                        className={dragItem === r.id ? "bg-gold/5 ring-2 ring-inset ring-gold/60" : undefined}
+                      >
                         <div className={`${GRID} min-h-[2.25rem]`}>
-                          {/* Document */}
-                          <div className="flex items-center px-3 py-1.5 font-medium text-fg">
+                          {/* Document + upload */}
+                          <div className="flex items-center gap-2 px-3 py-1.5 font-medium text-fg">
                             <span className="truncate" title={r.name}>
                               {r.name}
                             </span>
+                            {canEdit && (
+                              <label
+                                title="Upload files, or drag a file onto this row"
+                                className="ml-auto inline-flex shrink-0 cursor-pointer items-center gap-1 rounded border border-line bg-surface px-1.5 py-0.5 text-[11px] font-medium text-muted hover:bg-surface-2 hover:text-fg"
+                              >
+                                {uploading === r.id ? "Uploading…" : "+ Upload"}
+                                <input
+                                  type="file"
+                                  multiple
+                                  className="hidden"
+                                  disabled={uploading === r.id}
+                                  onChange={(e) => {
+                                    if (e.target.files) upload(r.id, e.target.files);
+                                    e.target.value = "";
+                                  }}
+                                />
+                              </label>
+                            )}
                           </div>
 
                           {/* Status (colored cell) */}
@@ -207,8 +249,8 @@ export function DocumentsPanel({
                           </div>
                         </div>
 
-                        {/* Attachments strip */}
-                        {(files.length > 0 || canEdit) && (
+                        {/* Attachments strip — shows uploaded files; upload entry is the name cell + drag-drop */}
+                        {files.length > 0 && (
                           <div className="flex flex-wrap items-center gap-1.5 border-t border-dashed border-line/70 bg-surface-2/30 px-3 py-1.5">
                             <span className="text-[10px] font-semibold uppercase tracking-wide text-faint">Files</span>
                             {files.map((d) => (
@@ -237,22 +279,6 @@ export function DocumentsPanel({
                                 )}
                               </span>
                             ))}
-                            {files.length === 0 && <span className="text-xs text-faint">None yet</span>}
-                            {canEdit && (
-                              <label className="ml-auto inline-flex cursor-pointer items-center gap-1 rounded border border-line bg-surface px-2 py-0.5 text-xs font-medium text-fg hover:bg-surface-2">
-                                {uploading === r.id ? "Uploading…" : "+ Upload"}
-                                <input
-                                  type="file"
-                                  multiple
-                                  className="hidden"
-                                  disabled={uploading === r.id}
-                                  onChange={(e) => {
-                                    if (e.target.files) upload(r.id, e.target.files);
-                                    e.target.value = "";
-                                  }}
-                                />
-                              </label>
-                            )}
                           </div>
                         )}
                       </div>
