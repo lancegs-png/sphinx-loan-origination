@@ -1,0 +1,108 @@
+import { createClient } from "@/lib/supabase/server";
+import { createServiceRoleClient } from "@/lib/supabase/admin";
+import { driveConfigured, createDealFolder, uploadFileToDrive } from "@/lib/google/drive";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+const BUCKET = "loan-documents";
+
+/**
+ * Upload one or more documents to a loan, optionally attached to a checklist item.
+ * Each file is stored in the private "loan-documents" bucket and, when Google Drive
+ * is configured, also mirrored into the deal's Drive folder (created on first use).
+ * Lending team only (RLS also enforces the insert).
+ */
+export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id: loanId } = await params;
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return new Response("Unauthorized", { status: 401 });
+
+  const { data: me } = await supabase
+    .from("profiles")
+    .select("lender_user_type")
+    .eq("id", user.id)
+    .single();
+  if (!me?.lender_user_type) return new Response("Forbidden", { status: 403 });
+
+  // RLS returns the loan only if the caller has access.
+  const { data: loan } = await supabase
+    .from("loans")
+    .select("id,loan_number,opportunity_number,property_address,drive_folder_id")
+    .eq("id", loanId)
+    .single();
+  if (!loan) return new Response("Not found", { status: 404 });
+
+  const form = await req.formData();
+  const checklistItemId = (form.get("checklistItemId") as string) || null;
+  const files = form.getAll("files").filter((f): f is File => f instanceof File && f.size > 0);
+  if (files.length === 0) return new Response("No files provided", { status: 400 });
+
+  const admin = createServiceRoleClient();
+
+  // Ensure a Drive folder exists for this deal (created once), if Drive is configured.
+  let driveFolderId = loan.drive_folder_id as string | null;
+  const useDrive = driveConfigured();
+  if (useDrive && !driveFolderId) {
+    try {
+      const ref = loan.loan_number ?? loan.opportunity_number;
+      const label = [ref, loan.property_address].filter(Boolean).join(" — ") || ref || loanId;
+      driveFolderId = await createDealFolder(label);
+      await admin.from("loans").update({ drive_folder_id: driveFolderId }).eq("id", loanId);
+    } catch {
+      driveFolderId = null; // fall back to Supabase-only
+    }
+  }
+
+  const created: unknown[] = [];
+  for (const file of files) {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const safe = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const path = `${loanId}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}_${safe}`;
+    const contentType = file.type || "application/octet-stream";
+
+    const { error: upErr } = await admin.storage
+      .from(BUCKET)
+      .upload(path, bytes, { contentType, upsert: false });
+    if (upErr) return new Response(`Storage upload failed: ${upErr.message}`, { status: 500 });
+
+    let driveFileId: string | null = null;
+    let driveLink: string | null = null;
+    if (useDrive && driveFolderId) {
+      try {
+        const r = await uploadFileToDrive({ folderId: driveFolderId, fileName: file.name, bytes, contentType });
+        driveFileId = r.id;
+        driveLink = r.webViewLink;
+      } catch {
+        /* best-effort: keep the Supabase copy even if Drive mirroring fails */
+      }
+    }
+
+    const { data: row, error: insErr } = await supabase
+      .from("loan_documents")
+      .insert({
+        loan_id: loanId,
+        checklist_item_id: checklistItemId,
+        file_name: file.name,
+        content_type: file.type || null,
+        size_bytes: file.size,
+        storage_path: path,
+        drive_file_id: driveFileId,
+        drive_web_link: driveLink,
+        uploaded_by: user.id,
+      })
+      .select("id,checklist_item_id,file_name,content_type,size_bytes,drive_web_link,created_at")
+      .single();
+    if (insErr) {
+      await admin.storage.from(BUCKET).remove([path]); // don't orphan the blob
+      return new Response(`Save failed: ${insErr.message}`, { status: 500 });
+    }
+    created.push(row);
+  }
+
+  return Response.json({ ok: true, documents: created });
+}

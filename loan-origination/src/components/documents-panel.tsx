@@ -1,8 +1,8 @@
 "use client";
 
-import { Fragment, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { createLoanChecklist, setChecklistItemStatus } from "@/app/actions";
-import type { ChecklistItem } from "@/lib/types";
+import type { ChecklistItem, LoanDocument } from "@/lib/types";
 
 const STATUSES = ["outstanding", "ordered", "update_needed", "approved", "not_applicable"];
 const STATUS_LABEL: Record<string, string> = {
@@ -27,17 +27,32 @@ const GRID = "grid grid-cols-[minmax(8rem,22%)_8.5rem_minmax(0,1fr)_minmax(6rem,
 export function DocumentsPanel({
   loanId,
   items,
+  documents,
   canEdit,
   canGenerate,
 }: {
   loanId: string;
   items: ChecklistItem[];
+  documents: LoanDocument[];
   canEdit: boolean;
   canGenerate: boolean;
 }) {
   const [rows, setRows] = useState<ChecklistItem[]>(items);
+  const [docs, setDocs] = useState<LoanDocument[]>(documents);
   const [busy, setBusy] = useState(false);
+  const [uploading, setUploading] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
+
+  const docsByItem = useMemo(() => {
+    const m = new Map<string, LoanDocument[]>();
+    for (const d of docs) {
+      if (!d.checklist_item_id) continue;
+      const arr = m.get(d.checklist_item_id) ?? [];
+      arr.push(d);
+      m.set(d.checklist_item_id, arr);
+    }
+    return m;
+  }, [docs]);
 
   async function generate() {
     setBusy(true);
@@ -58,6 +73,38 @@ export function DocumentsPanel({
     setRows((prev) => prev.map((r) => (r.id === itemId ? { ...r, notes } : r)));
     const res = await setChecklistItemStatus({ loanId, itemId, status: row.status, notes });
     if (!res.ok) setMsg(res.error ?? "Could not save note.");
+  }
+
+  async function upload(itemId: string, fileList: FileList) {
+    const files = Array.from(fileList);
+    if (files.length === 0) return;
+    setUploading(itemId);
+    setMsg(null);
+    const fd = new FormData();
+    fd.set("checklistItemId", itemId);
+    for (const f of files) fd.append("files", f);
+    try {
+      const res = await fetch(`/api/loans/${loanId}/documents`, { method: "POST", body: fd });
+      if (!res.ok) {
+        setMsg((await res.text().catch(() => "")) || "Upload failed.");
+      } else {
+        const json = (await res.json()) as { documents: LoanDocument[] };
+        setDocs((prev) => [...prev, ...json.documents]);
+      }
+    } catch {
+      setMsg("Upload failed.");
+    } finally {
+      setUploading(null);
+    }
+  }
+
+  async function removeDoc(docId: string) {
+    const res = await fetch(`/api/loans/${loanId}/documents/${docId}`, { method: "DELETE" });
+    if (!res.ok) {
+      setMsg("Could not delete file.");
+      return;
+    }
+    setDocs((prev) => prev.filter((d) => d.id !== docId));
   }
 
   if (rows.length === 0) {
@@ -109,56 +156,108 @@ export function DocumentsPanel({
                 )}
                 {rows
                   .filter((r) => (r.category ?? "Other") === cat)
-                  .map((r) => (
-                    <div key={r.id} className={`${GRID} min-h-[2.25rem]`}>
-                      {/* Document */}
-                      <div className="flex items-center px-3 py-1.5 font-medium text-fg">
-                        <span className="truncate" title={r.name}>
-                          {r.name}
-                        </span>
-                      </div>
+                  .map((r) => {
+                    const files = docsByItem.get(r.id) ?? [];
+                    return (
+                      <div key={r.id}>
+                        <div className={`${GRID} min-h-[2.25rem]`}>
+                          {/* Document */}
+                          <div className="flex items-center px-3 py-1.5 font-medium text-fg">
+                            <span className="truncate" title={r.name}>
+                              {r.name}
+                            </span>
+                          </div>
 
-                      {/* Status (colored cell) */}
-                      <div
-                        className={`flex items-stretch border-l border-line ${STATUS_CELL[r.status] ?? ""}`}
-                      >
-                        {canEdit ? (
-                          <select
-                            value={r.status}
-                            onChange={(e) => setStatus(r.id, e.target.value)}
-                            className="w-full cursor-pointer appearance-none bg-transparent px-3 py-1.5 text-xs font-medium text-inherit outline-none"
-                          >
-                            {STATUSES.map((s) => (
-                              <option key={s} value={s} style={{ color: "var(--fg)" }}>
-                                {STATUS_LABEL[s]}
-                              </option>
+                          {/* Status (colored cell) */}
+                          <div className={`flex items-stretch border-l border-line ${STATUS_CELL[r.status] ?? ""}`}>
+                            {canEdit ? (
+                              <select
+                                value={r.status}
+                                onChange={(e) => setStatus(r.id, e.target.value)}
+                                className="w-full cursor-pointer appearance-none bg-transparent px-3 py-1.5 text-xs font-medium text-inherit outline-none"
+                              >
+                                {STATUSES.map((s) => (
+                                  <option key={s} value={s} style={{ color: "var(--fg)" }}>
+                                    {STATUS_LABEL[s]}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              <span className="px-3 py-1.5 text-xs font-medium">{STATUS_LABEL[r.status]}</span>
+                            )}
+                          </div>
+
+                          {/* Guidelines */}
+                          <div className="flex items-center border-l border-line px-3 py-1.5 text-xs text-muted">
+                            <span>{r.guidance ?? ""}</span>
+                          </div>
+
+                          {/* Notes */}
+                          <div className="flex items-stretch border-l border-line">
+                            {canEdit ? (
+                              <input
+                                defaultValue={r.notes ?? ""}
+                                onBlur={(e) => setNotes(r.id, e.target.value.trim())}
+                                placeholder="—"
+                                className="w-full bg-transparent px-3 py-1.5 text-xs text-fg outline-none placeholder:text-faint focus:bg-gold/5"
+                              />
+                            ) : (
+                              <span className="px-3 py-1.5 text-xs text-muted">{r.notes ?? ""}</span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Attachments strip */}
+                        {(files.length > 0 || canEdit) && (
+                          <div className="flex flex-wrap items-center gap-1.5 border-t border-dashed border-line/70 bg-surface-2/30 px-3 py-1.5">
+                            <span className="text-[10px] font-semibold uppercase tracking-wide text-faint">Files</span>
+                            {files.map((d) => (
+                              <span
+                                key={d.id}
+                                className="inline-flex items-center gap-1 rounded border border-line bg-surface px-1.5 py-0.5 text-xs"
+                              >
+                                <a
+                                  href={`/api/loans/${loanId}/documents/${d.id}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="max-w-[14rem] truncate text-navy hover:underline"
+                                  title={d.file_name}
+                                >
+                                  {d.file_name}
+                                </a>
+                                {canEdit && (
+                                  <button
+                                    type="button"
+                                    onClick={() => removeDoc(d.id)}
+                                    aria-label={`Remove ${d.file_name}`}
+                                    className="leading-none text-faint hover:text-[color:var(--status-outstanding)]"
+                                  >
+                                    ×
+                                  </button>
+                                )}
+                              </span>
                             ))}
-                          </select>
-                        ) : (
-                          <span className="px-3 py-1.5 text-xs font-medium">{STATUS_LABEL[r.status]}</span>
+                            {files.length === 0 && <span className="text-xs text-faint">None yet</span>}
+                            {canEdit && (
+                              <label className="ml-auto inline-flex cursor-pointer items-center gap-1 rounded border border-line bg-surface px-2 py-0.5 text-xs font-medium text-fg hover:bg-surface-2">
+                                {uploading === r.id ? "Uploading…" : "+ Upload"}
+                                <input
+                                  type="file"
+                                  multiple
+                                  className="hidden"
+                                  disabled={uploading === r.id}
+                                  onChange={(e) => {
+                                    if (e.target.files) upload(r.id, e.target.files);
+                                    e.target.value = "";
+                                  }}
+                                />
+                              </label>
+                            )}
+                          </div>
                         )}
                       </div>
-
-                      {/* Guidelines */}
-                      <div className="flex items-center border-l border-line px-3 py-1.5 text-xs text-muted">
-                        <span>{r.guidance ?? ""}</span>
-                      </div>
-
-                      {/* Notes */}
-                      <div className="flex items-stretch border-l border-line">
-                        {canEdit ? (
-                          <input
-                            defaultValue={r.notes ?? ""}
-                            onBlur={(e) => setNotes(r.id, e.target.value.trim())}
-                            placeholder="—"
-                            className="w-full bg-transparent px-3 py-1.5 text-xs text-fg outline-none placeholder:text-faint focus:bg-gold/5"
-                          />
-                        ) : (
-                          <span className="px-3 py-1.5 text-xs text-muted">{r.notes ?? ""}</span>
-                        )}
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
               </Fragment>
             ))}
           </div>

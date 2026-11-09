@@ -97,6 +97,16 @@ export type ChecklistItem = {
   notes: string | null;
 };
 
+export type LoanDocument = {
+  id: string;
+  checklist_item_id: string | null;
+  file_name: string;
+  content_type: string | null;
+  size_bytes: number | null;
+  drive_web_link: string | null;
+  created_at: string;
+};
+
 export type InternalNote = {
   id: string;
   loan_id: string;

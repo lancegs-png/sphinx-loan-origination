@@ -7,6 +7,7 @@ import type {
   FieldValues,
   InternalNote,
   Loan,
+  LoanDocument,
   Message,
   Participant,
 } from "@/lib/types";
@@ -23,6 +24,7 @@ export function DealView({
   fieldDefs,
   fieldValues,
   checklist,
+  documents,
   atProcessing,
 }: {
   loan: Loan;
@@ -36,6 +38,7 @@ export function DealView({
   fieldDefs: FieldDef[];
   fieldValues: FieldValues;
   checklist: ChecklistItem[];
+  documents: LoanDocument[];
   atProcessing: boolean;
 }) {
   return (
@@ -87,6 +90,7 @@ export function DealView({
         fieldDefs={fieldDefs}
         fieldValues={fieldValues}
         checklist={checklist}
+        documents={documents}
         atProcessing={atProcessing}
       />
     </div>

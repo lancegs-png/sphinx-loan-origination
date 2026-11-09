@@ -1,6 +1,19 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { ChecklistItem } from "@/lib/types";
+import type { ChecklistItem, LoanDocument } from "@/lib/types";
+
+/** Load a loan's uploaded documents (newest last), for listing under each checklist item. */
+export async function loadLoanDocuments(
+  client: SupabaseClient,
+  loanId: string,
+): Promise<LoanDocument[]> {
+  const { data } = await client
+    .from("loan_documents")
+    .select("id,checklist_item_id,file_name,content_type,size_bytes,drive_web_link,created_at")
+    .eq("loan_id", loanId)
+    .order("created_at", { ascending: true });
+  return (data as LoanDocument[]) ?? [];
+}
 
 /** Load a loan's checklist, joined with document names + program category/assignee. */
 export async function loadLoanChecklist(

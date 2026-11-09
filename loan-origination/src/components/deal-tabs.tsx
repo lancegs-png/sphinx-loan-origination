@@ -16,6 +16,7 @@ import type {
   FieldValues,
   InternalNote,
   Loan,
+  LoanDocument,
   Message,
   Participant,
 } from "@/lib/types";
@@ -40,6 +41,7 @@ export function DealTabs({
   fieldDefs,
   fieldValues,
   checklist,
+  documents,
   atProcessing,
 }: {
   loan: Loan;
@@ -53,6 +55,7 @@ export function DealTabs({
   fieldDefs: FieldDef[];
   fieldValues: FieldValues;
   checklist: ChecklistItem[];
+  documents: LoanDocument[];
   atProcessing: boolean;
 }) {
   const [tab, setTab] = useState<Tab>("loan");
@@ -129,6 +132,7 @@ export function DealTabs({
                 <DocumentsPanel
                   loanId={loan.id}
                   items={checklist}
+                  documents={documents}
                   canEdit={isLender}
                   canGenerate={isLender && atProcessing}
                 />
