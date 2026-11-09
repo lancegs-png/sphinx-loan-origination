@@ -1,18 +1,19 @@
-import { STAGES, stageIndex } from "@/lib/stages";
+import { STAGE_BUCKETS, bucketIndex } from "@/lib/stages";
 
 /**
- * Stage progress: completed = navy, current = gold (filled + ring),
- * upcoming = hollow. Wraps cleanly; no decorative connectors.
+ * Stage progress across the six funnel buckets (matching the pipeline overview):
+ * completed = navy, current = gold (filled + ring), upcoming = hollow.
+ * Wraps cleanly; no decorative connectors.
  */
 export function StageBar({ currentStage }: { currentStage: string }) {
-  const current = stageIndex(currentStage);
+  const current = bucketIndex(currentStage);
 
   return (
     <ol className="flex flex-wrap items-center gap-x-5 gap-y-2">
-      {STAGES.map((s, i) => {
+      {STAGE_BUCKETS.map((s, i) => {
         const state = i < current ? "done" : i === current ? "current" : "upcoming";
         return (
-          <li key={s.key} className="flex items-center gap-2">
+          <li key={s.label} className="flex items-center gap-2">
             <span
               aria-hidden
               className={

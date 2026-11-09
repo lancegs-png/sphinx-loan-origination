@@ -129,11 +129,11 @@ export function QuotePanel({
 
   const Num = (label: string, k: keyof typeof f) => (
     <label className="flex flex-col gap-1">
-      <span className="text-muted">{label}</span>
+      <span className="text-xs text-muted">{label}</span>
       <input
         value={String(f[k])}
         onChange={(e) => set(k, e.target.value as never)}
-        className="field w-full"
+        className="field field-sm w-full"
       />
     </label>
   );
@@ -141,56 +141,60 @@ export function QuotePanel({
   return (
     <div className="flex flex-col gap-3 text-sm">
       <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">Inputs</h3>
-      {Num("Rate (%)", "rate")}
-      {Num("Origination fee (%)", "origPct")}
-      <label className="flex flex-col gap-1">
-        <span className="text-muted">Prepay</span>
-        <select value={f.prepay} onChange={(e) => set("prepay", e.target.value as PrepayTerm)} className="field select w-full">
-          {["5yr", "4yr", "3yr", "2yr", "1yr", "none"].map((p) => (
-            <option key={p} value={p}>{p}</option>
-          ))}
-        </select>
-      </label>
-      <label className="flex flex-col gap-1">
-        <span className="text-muted">Lock (days)</span>
-        <select value={f.lockDays} onChange={(e) => set("lockDays", Number(e.target.value) as 30 | 45 | 60)} className="field select w-full">
-          {[30, 45, 60].map((d) => <option key={d} value={d}>{d}</option>)}
-        </select>
-      </label>
-      {Num("Loan amount", "loanAmount")}
-      {Num("Property value", "propertyValue")}
-      {Num("FICO", "fico")}
-      <label className="flex flex-col gap-1">
-        <span className="text-muted">Purpose</span>
-        <select value={f.purpose} onChange={(e) => set("purpose", e.target.value as Purpose)} className="field select w-full">
-          <option value="purchase">Purchase</option>
-          <option value="rt">Refinance — Rate/Term</option>
-          <option value="co">Refinance — Cash-Out</option>
-        </select>
-      </label>
-      <label className="flex flex-col gap-1">
-        <span className="text-muted">Property type</span>
-        <select value={f.property} onChange={(e) => set("property", e.target.value as PropertyKind)} className="field select w-full">
-          <option value="sfr">SFR / PUD / Townhome</option>
-          <option value="2-4">2-4 Unit</option>
-          <option value="condo">Condo</option>
-          <option value="nw_condo">Non-warrantable Condo</option>
-          <option value="str">Short-Term Rental</option>
-        </select>
-      </label>
-      {Num("Monthly rent", "monthlyRent")}
-      {Num("Annual taxes", "annualTaxes")}
-      {Num("Annual insurance", "annualInsurance")}
-      {Num("Annual HOA", "annualHOA")}
-      <label className="flex items-center gap-2 text-muted">
-        <input type="checkbox" className="accent-navy" checked={f.interestOnly} onChange={(e) => set("interestOnly", e.target.checked)} /> Interest only
-      </label>
-      <label className="flex items-center gap-2 text-muted">
-        <input type="checkbox" className="accent-navy" checked={f.foreignNational} onChange={(e) => set("foreignNational", e.target.checked)} /> Foreign national
-      </label>
-      <label className="flex items-center gap-2 text-muted">
-        <input type="checkbox" className="accent-navy" checked={f.firstTimeInvestor} onChange={(e) => set("firstTimeInvestor", e.target.checked)} /> First-time investor
-      </label>
+      <div className="grid grid-cols-2 gap-x-3 gap-y-2">
+        {Num("Rate (%)", "rate")}
+        {Num("Origination fee (%)", "origPct")}
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-muted">Prepay</span>
+          <select value={f.prepay} onChange={(e) => set("prepay", e.target.value as PrepayTerm)} className="field select field-sm w-full">
+            {["5yr", "4yr", "3yr", "2yr", "1yr", "none"].map((p) => (
+              <option key={p} value={p}>{p}</option>
+            ))}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-muted">Lock (days)</span>
+          <select value={f.lockDays} onChange={(e) => set("lockDays", Number(e.target.value) as 30 | 45 | 60)} className="field select field-sm w-full">
+            {[30, 45, 60].map((d) => <option key={d} value={d}>{d}</option>)}
+          </select>
+        </label>
+        {Num("Loan amount", "loanAmount")}
+        {Num("Property value", "propertyValue")}
+        {Num("FICO", "fico")}
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-muted">Purpose</span>
+          <select value={f.purpose} onChange={(e) => set("purpose", e.target.value as Purpose)} className="field select field-sm w-full">
+            <option value="purchase">Purchase</option>
+            <option value="rt">Refinance — Rate/Term</option>
+            <option value="co">Refinance — Cash-Out</option>
+          </select>
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-muted">Property type</span>
+          <select value={f.property} onChange={(e) => set("property", e.target.value as PropertyKind)} className="field select field-sm w-full">
+            <option value="sfr">SFR / PUD / Townhome</option>
+            <option value="2-4">2-4 Unit</option>
+            <option value="condo">Condo</option>
+            <option value="nw_condo">Non-warrantable Condo</option>
+            <option value="str">Short-Term Rental</option>
+          </select>
+        </label>
+        {Num("Monthly rent", "monthlyRent")}
+        {Num("Annual taxes", "annualTaxes")}
+        {Num("Annual insurance", "annualInsurance")}
+        {Num("Annual HOA", "annualHOA")}
+        <div className="col-span-2 mt-0.5 flex flex-wrap gap-x-4 gap-y-1.5">
+          <label className="flex items-center gap-2 text-xs text-muted">
+            <input type="checkbox" className="accent-navy" checked={f.interestOnly} onChange={(e) => set("interestOnly", e.target.checked)} /> Interest only
+          </label>
+          <label className="flex items-center gap-2 text-xs text-muted">
+            <input type="checkbox" className="accent-navy" checked={f.foreignNational} onChange={(e) => set("foreignNational", e.target.checked)} /> Foreign national
+          </label>
+          <label className="flex items-center gap-2 text-xs text-muted">
+            <input type="checkbox" className="accent-navy" checked={f.firstTimeInvestor} onChange={(e) => set("firstTimeInvestor", e.target.checked)} /> First-time investor
+          </label>
+        </div>
+      </div>
 
       <button onClick={calc} disabled={busy} className="btn btn-primary w-full">
         {busy ? "Pricing…" : "Calculate quote"}

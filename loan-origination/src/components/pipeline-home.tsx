@@ -1,6 +1,7 @@
 import { addLoan } from "@/app/actions";
 import { AppShell } from "@/components/app-shell";
 import { PipelineTable } from "@/components/pipeline-table";
+import { PipelineSummary } from "@/components/pipeline-summary";
 import { navFor } from "@/lib/nav";
 import type { Loan, Profile } from "@/lib/types";
 
@@ -19,9 +20,6 @@ export function PipelineHome({
         <div className="mb-6 flex items-end justify-between gap-4">
           <div>
             <h1 className="text-[1.75rem] font-bold text-fg">Pipeline</h1>
-            <p className="mt-1 text-sm text-muted">
-              {loans.length} {loans.length === 1 ? "deal" : "deals"} in flight
-            </p>
           </div>
           <form action={addLoan}>
             <button className="btn btn-primary">
@@ -43,7 +41,10 @@ export function PipelineHome({
             </form>
           </div>
         ) : (
-          <PipelineTable loans={loans} guarantors={guarantors} />
+          <>
+            <PipelineSummary loans={loans} />
+            <PipelineTable loans={loans} guarantors={guarantors} />
+          </>
         )}
       </main>
     </AppShell>

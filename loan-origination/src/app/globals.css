@@ -151,6 +151,12 @@ h1, h2, h3, h4,
   color: var(--fg);
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
+
+/* Compact field for dense forms (e.g. the quote inputs). */
+.field-sm {
+  padding: 0.3125rem 0.5rem;
+  font-size: 0.8125rem;
+}
 .field::placeholder { color: var(--faint); }
 .field:focus {
   outline: none;
