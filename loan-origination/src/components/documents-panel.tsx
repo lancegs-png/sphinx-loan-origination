@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { createLoanChecklist, setChecklistItemStatus } from "@/app/actions";
 import type { ChecklistItem } from "@/lib/types";
 
@@ -12,13 +12,17 @@ const STATUS_LABEL: Record<string, string> = {
   approved: "Approved",
   not_applicable: "N/A",
 };
-const STATUS_COLOR: Record<string, string> = {
-  outstanding: "var(--status-outstanding)",
-  ordered: "var(--muted)",
-  update_needed: "var(--status-outstanding)",
-  approved: "var(--status-approved)",
-  not_applicable: "var(--muted)",
+// Filled status cell (color + tinted background), matching the deal dashboard.
+const STATUS_CELL: Record<string, string> = {
+  outstanding: "status-outstanding",
+  ordered: "",
+  update_needed: "status-update",
+  approved: "status-approved",
+  not_applicable: "",
 };
+
+// Four-column spreadsheet grid shared by the header and every row.
+const GRID = "grid grid-cols-[minmax(8rem,22%)_8.5rem_minmax(0,1fr)_minmax(6rem,18%)] items-stretch";
 
 export function DocumentsPanel({
   loanId,
@@ -48,6 +52,14 @@ export function DocumentsPanel({
     if (!res.ok) setMsg(res.error ?? "Could not update.");
   }
 
+  async function setNotes(itemId: string, notes: string) {
+    const row = rows.find((r) => r.id === itemId);
+    if (!row || (row.notes ?? "") === notes) return;
+    setRows((prev) => prev.map((r) => (r.id === itemId ? { ...r, notes } : r)));
+    const res = await setChecklistItemStatus({ loanId, itemId, status: row.status, notes });
+    if (!res.ok) setMsg(res.error ?? "Could not save note.");
+  }
+
   if (rows.length === 0) {
     return (
       <div className="flex flex-col gap-3">
@@ -65,49 +77,94 @@ export function DocumentsPanel({
   }
 
   const categories = [...new Set(rows.map((r) => r.category ?? "Other"))];
+  const showCategory = categories.length > 1;
   const total = rows.length;
   const approved = rows.filter((r) => r.status === "approved").length;
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-3">
       <p className="text-xs text-muted">
         {approved} of {total} cleared
       </p>
-      {categories.map((cat) => (
-        <section key={cat}>
-          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">{cat}</h3>
-          <ul className="flex flex-col gap-3">
-            {rows
-              .filter((r) => (r.category ?? "Other") === cat)
-              .map((r) => (
-                <li key={r.id} className="flex flex-col gap-1">
-                  <div className="flex items-start justify-between gap-2">
-                    <span className="font-medium">{r.name}</span>
-                    {canEdit ? (
-                      <select
-                        value={r.status}
-                        onChange={(e) => setStatus(r.id, e.target.value)}
-                        className="field select shrink-0 py-1.5 text-xs font-medium"
-                        style={{ color: STATUS_COLOR[r.status] }}
-                      >
-                        {STATUSES.map((s) => (
-                          <option key={s} value={s} style={{ color: "var(--fg)" }}>
-                            {STATUS_LABEL[s]}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      <span className="text-xs" style={{ color: STATUS_COLOR[r.status] }}>
-                        {STATUS_LABEL[r.status]}
-                      </span>
-                    )}
+
+      <div className="overflow-x-auto">
+        <div className="card min-w-[640px] overflow-hidden text-sm">
+          {/* Column headers */}
+          <div
+            className={`${GRID} border-b border-line bg-surface-2 text-[11px] font-semibold uppercase tracking-wide text-muted`}
+          >
+            <div className="px-3 py-1.5">Document</div>
+            <div className="border-l border-line px-3 py-1.5">Status</div>
+            <div className="border-l border-line px-3 py-1.5">Guidelines</div>
+            <div className="border-l border-line px-3 py-1.5">Notes</div>
+          </div>
+
+          <div className="divide-y divide-line">
+            {categories.map((cat) => (
+              <Fragment key={cat}>
+                {showCategory && (
+                  <div className="bg-surface-2/60 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted">
+                    {cat}
                   </div>
-                  {r.guidance && <p className="text-xs text-muted">{r.guidance}</p>}
-                </li>
-              ))}
-          </ul>
-        </section>
-      ))}
+                )}
+                {rows
+                  .filter((r) => (r.category ?? "Other") === cat)
+                  .map((r) => (
+                    <div key={r.id} className={`${GRID} min-h-[2.25rem]`}>
+                      {/* Document */}
+                      <div className="flex items-center px-3 py-1.5 font-medium text-fg">
+                        <span className="truncate" title={r.name}>
+                          {r.name}
+                        </span>
+                      </div>
+
+                      {/* Status (colored cell) */}
+                      <div
+                        className={`flex items-stretch border-l border-line ${STATUS_CELL[r.status] ?? ""}`}
+                      >
+                        {canEdit ? (
+                          <select
+                            value={r.status}
+                            onChange={(e) => setStatus(r.id, e.target.value)}
+                            className="w-full cursor-pointer appearance-none bg-transparent px-3 py-1.5 text-xs font-medium text-inherit outline-none"
+                          >
+                            {STATUSES.map((s) => (
+                              <option key={s} value={s} style={{ color: "var(--fg)" }}>
+                                {STATUS_LABEL[s]}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <span className="px-3 py-1.5 text-xs font-medium">{STATUS_LABEL[r.status]}</span>
+                        )}
+                      </div>
+
+                      {/* Guidelines */}
+                      <div className="flex items-center border-l border-line px-3 py-1.5 text-xs text-muted">
+                        <span>{r.guidance ?? ""}</span>
+                      </div>
+
+                      {/* Notes */}
+                      <div className="flex items-stretch border-l border-line">
+                        {canEdit ? (
+                          <input
+                            defaultValue={r.notes ?? ""}
+                            onBlur={(e) => setNotes(r.id, e.target.value.trim())}
+                            placeholder="—"
+                            className="w-full bg-transparent px-3 py-1.5 text-xs text-fg outline-none placeholder:text-faint focus:bg-gold/5"
+                          />
+                        ) : (
+                          <span className="px-3 py-1.5 text-xs text-muted">{r.notes ?? ""}</span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+              </Fragment>
+            ))}
+          </div>
+        </div>
+      </div>
+
       {msg && <p className="text-xs text-muted">{msg}</p>}
     </div>
   );
