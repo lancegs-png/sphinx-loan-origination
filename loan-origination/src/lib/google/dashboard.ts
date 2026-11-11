@@ -18,7 +18,7 @@ import { writeCells, sheetUrl } from "./sheets";
  * Keys use the loadFieldValues form (idx 1 bare, idx 2 as `key#2`). B2 Loan Number comes
  * from the loans row, not a field value.
  */
-const LOAN_DATA_CELLS: { cell: string; key: string }[] = [
+export const LOAN_DATA_CELLS: { cell: string; key: string }[] = [
   // Loan Information
   { cell: "B3", key: "application_date" },
   { cell: "B4", key: "product_type" },
@@ -85,7 +85,7 @@ const LOAN_DATA_CELLS: { cell: string; key: string }[] = [
 ];
 
 // Data Tape (row 2) — ONLY the columns Loan Data doesn't already feed by formula.
-const DATA_TAPE_CELLS: { cell: string; key: string }[] = [
+export const DATA_TAPE_CELLS: { cell: string; key: string }[] = [
   { cell: "C2", key: "channel" },
   { cell: "E2", key: "lien_position" },
   { cell: "W2", key: "cltv" },
@@ -102,7 +102,7 @@ const DATA_TAPE_CELLS: { cell: string; key: string }[] = [
 ];
 
 /** Format a field value for USER_ENTERED entry, by field type. null => skip (don't clear). */
-function cellValue(type: string | undefined, raw: unknown): string | number | null {
+export function cellValue(type: string | undefined, raw: unknown): string | number | null {
   if (raw === null || raw === undefined || raw === "") return null;
   const str = String(raw);
   if (type === "percent") {

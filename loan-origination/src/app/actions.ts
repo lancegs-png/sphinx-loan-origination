@@ -12,6 +12,7 @@ import {
 import { recomputeLoan } from "@/lib/calc";
 import { sheetsConfigured, appendSheetRow } from "@/lib/google/sheets";
 import { syncLoanToDashboard } from "@/lib/google/dashboard";
+import { pushFieldsToSheet } from "@/lib/google/sheet-sync";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { logEvent } from "@/lib/audit";
 import { answerLoanQuestion } from "@/lib/ai/record-keeper";
@@ -562,6 +563,13 @@ export async function saveLoanField(input: {
     await recomputeLoan(input.loanId);
   } catch {
     /* calc is best-effort */
+  }
+  // Live mirror into the loan's Google Sheet (app -> sheet). Best-effort; a Sheets error
+  // must never fail the save. API writes don't trigger the sheet's onEdit, so no loop.
+  try {
+    await pushFieldsToSheet(input.loanId, [idx > 1 ? `${input.key}#${idx}` : input.key]);
+  } catch {
+    /* sheet sync is best-effort */
   }
   return { ok: true };
 }
