@@ -12,7 +12,11 @@ export function TemplatesPanel({
   programKey: string | null;
   values: FieldValues;
 }) {
+  // term_sheet_date / commitment_date are auto-stamped to the generation date when the
+  // document is downloaded (defaulting to today), so they never block readiness.
+  const AUTO_STAMPED = new Set(["term_sheet_date", "commitment_date"]);
   const hasValue = (k: string) => {
+    if (AUTO_STAMPED.has(k)) return true;
     const c = values[k]?.current;
     return c !== undefined && c !== null && c !== "";
   };

@@ -67,6 +67,12 @@ function fmtDisplay(def: FieldDef, v: string): string {
   return v;
 }
 
+/** Format a stored YYYY-MM-DD date as MM/DD/YYYY (no timezone shift). */
+function fmtMMDDYYYY(iso: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  return m ? `${m[2]}/${m[3]}/${m[1]}` : iso;
+}
+
 export function LoanData({
   loan,
   fieldDefs,
@@ -230,13 +236,14 @@ function FieldRow({
   const showLock = canEdit && isLender && def.verifiable && LOCKABLE_KEYS.has(def.key);
 
   // Term sheet / commitment letter dates are auto-stamped when the document is
-  // generated (read-only here) and reflect the most recent generation.
+  // generated (read-only here) and reflect the most recent generation. Until the first
+  // generation they preview as today (MM/DD/YYYY), so the document reads as ready to
+  // download; the stored value is set to the actual generation date on download.
   if (def.key === "term_sheet_date" || def.key === "commitment_date") {
+    const iso = current || new Date().toISOString().slice(0, 10);
     return (
       <Row label={def.label} badge="auto">
-        <span className="block truncate px-2 py-1.5 text-sm text-fg">
-          {current ? fmtDisplay(def, current) : "—"}
-        </span>
+        <span className="block truncate px-2 py-1.5 text-sm text-fg">{fmtMMDDYYYY(iso)}</span>
       </Row>
     );
   }
