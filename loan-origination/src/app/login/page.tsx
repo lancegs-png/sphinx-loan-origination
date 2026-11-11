@@ -6,6 +6,40 @@ import { SphinxLogo } from "@/components/brand";
 
 type Mode = "magic" | "password";
 
+const AUTH_FETCH_ERROR = /Failed to execute 'fetch'|Invalid value/i;
+const RECOVERED_FLAG = "sb-auth-recovered";
+
+/**
+ * If an auth call failed with the "fetch … Invalid value" error, it's a corrupt stored
+ * Supabase session poisoning the request headers. Clear every sb-* cookie / storage entry
+ * and reload once (guarded against loops) so the next attempt starts from a clean session.
+ * Returns true when it kicked off recovery, so the caller stops.
+ */
+function recoverFromCorruptSession(message: string): boolean {
+  if (typeof window === "undefined" || !AUTH_FETCH_ERROR.test(message)) return false;
+  if (sessionStorage.getItem(RECOVERED_FLAG)) return false; // already tried — don't loop
+  try {
+    sessionStorage.setItem(RECOVERED_FLAG, "1");
+    for (const part of document.cookie.split(";")) {
+      const name = part.split("=")[0]?.trim();
+      if (name && name.startsWith("sb-")) {
+        for (const scope of ["", `; domain=${location.hostname}`]) {
+          document.cookie = `${name}=; Max-Age=0; path=/${scope}`;
+        }
+      }
+    }
+    for (const store of [localStorage, sessionStorage]) {
+      Object.keys(store)
+        .filter((k) => k.startsWith("sb-") && k !== RECOVERED_FLAG)
+        .forEach((k) => store.removeItem(k));
+    }
+  } catch {
+    /* best effort */
+  }
+  window.location.reload();
+  return true;
+}
+
 export default function LoginPage() {
   const [mode, setMode] = useState<Mode>("magic");
   const [email, setEmail] = useState("");
@@ -26,15 +60,17 @@ export default function LoginPage() {
         email,
         options: { emailRedirectTo: redirectTo },
       });
+      if (error && recoverFromCorruptSession(error.message)) return;
+      sessionStorage.removeItem(RECOVERED_FLAG);
       setMessage(
         error
           ? `Couldn’t send link: ${error.message}`
           : "Link emailed. Check your inbox for the sign-in link.",
       );
     } catch (err) {
-      setMessage(
-        `Couldn’t send link: ${err instanceof Error ? err.message : "unknown error"}`,
-      );
+      const msg = err instanceof Error ? err.message : "unknown error";
+      if (recoverFromCorruptSession(msg)) return;
+      setMessage(`Couldn’t send link: ${msg}`);
     } finally {
       setBusy(false);
     }
@@ -49,11 +85,20 @@ export default function LoginPage() {
       kind === "in"
         ? supabase.auth.signInWithPassword({ email, password })
         : supabase.auth.signUp({ email, password, options: { emailRedirectTo: redirectTo } });
-    const { error } = await fn;
-    setBusy(false);
-    if (error) setMessage(error.message);
-    else if (kind === "up") setMessage("Account created. If email confirmation is on, check your inbox.");
-    else window.location.href = "/";
+    try {
+      const { error } = await fn;
+      setBusy(false);
+      if (error && recoverFromCorruptSession(error.message)) return;
+      sessionStorage.removeItem(RECOVERED_FLAG);
+      if (error) setMessage(error.message);
+      else if (kind === "up") setMessage("Account created. If email confirmation is on, check your inbox.");
+      else window.location.href = "/";
+    } catch (err) {
+      setBusy(false);
+      const msg = err instanceof Error ? err.message : "unknown error";
+      if (recoverFromCorruptSession(msg)) return;
+      setMessage(msg);
+    }
   }
 
   async function google() {
