@@ -29,41 +29,37 @@ export default async function LoanPage({
   // RLS returns the row only if this user has access to the loan.
   const { data: loan } = await supabase.from("loans").select("*").eq("id", id).single();
   if (!loan) notFound();
-
-  const { data: messages } = await supabase
-    .from("messages")
-    .select("*")
-    .eq("loan_id", id)
-    .order("created_at", { ascending: true });
-
-  const { data: participants } = await supabase
-    .from("deal_participants")
-    .select("*, profiles(*)")
-    .eq("loan_id", id);
-
-  const internalNotes: InternalNote[] = isLender
-    ? ((
-        await supabase
-          .from("internal_notes")
-          .select("*, author:author_id(full_name,email)")
-          .eq("loan_id", id)
-          .order("created_at", { ascending: true })
-      ).data as InternalNote[]) ?? []
-    : [];
-
-  const { data: fieldDefs } = await supabase
-    .from("field_definitions")
-    .select("key,label,section,type,options,lender_only,sort,verifiable,repeat_group,source,required_stage,calc_key")
-    .order("sort");
-
-  // Current field values (RLS filters lender-only fields for borrowers).
-  const fieldValues = await loadFieldValues(supabase, id);
-
   const typedLoan = loan as Loan;
-  const checklist = await loadLoanChecklist(supabase, id, typedLoan.program_id);
-  const documents = await loadLoanDocuments(supabase, id);
-  // Activity log is a lender-only tab; load it only for the lending team.
-  const activity: ActivityEvent[] = isLender ? await loadLoanActivity(supabase, id) : [];
+
+  // The rest of the deal's data is independent (only the checklist needs the loan's
+  // program), so fetch it in one parallel wave instead of ~8 sequential round-trips —
+  // this is what makes page loads and refreshes (e.g. a stage change) feel snappy.
+  const [messagesRes, participantsRes, internalNotes, fieldDefsRes, fieldValues, checklist, documents, activity] =
+    await Promise.all([
+      supabase.from("messages").select("*").eq("loan_id", id).order("created_at", { ascending: true }),
+      supabase.from("deal_participants").select("*, profiles(*)").eq("loan_id", id),
+      isLender
+        ? supabase
+            .from("internal_notes")
+            .select("*, author:author_id(full_name,email)")
+            .eq("loan_id", id)
+            .order("created_at", { ascending: true })
+            .then((r) => (r.data as InternalNote[]) ?? [])
+        : Promise.resolve([] as InternalNote[]),
+      supabase
+        .from("field_definitions")
+        .select("key,label,section,type,options,lender_only,sort,verifiable,repeat_group,source,required_stage,calc_key")
+        .order("sort"),
+      loadFieldValues(supabase, id), // RLS filters lender-only fields for borrowers
+      loadLoanChecklist(supabase, id, typedLoan.program_id),
+      loadLoanDocuments(supabase, id),
+      // Activity log is a lender-only tab; load it only for the lending team.
+      isLender ? loadLoanActivity(supabase, id) : Promise.resolve([] as ActivityEvent[]),
+    ]);
+
+  const messages = messagesRes.data;
+  const participants = participantsRes.data;
+  const fieldDefs = fieldDefsRes.data;
   const fieldLabels = Object.fromEntries(((fieldDefs as FieldDef[]) ?? []).map((d) => [d.key, d.label]));
   const atProcessing = STAGE_ORDER.indexOf(typedLoan.stage) >= STAGE_ORDER.indexOf("processing");
 
