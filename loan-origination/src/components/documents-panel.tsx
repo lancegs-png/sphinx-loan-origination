@@ -125,10 +125,20 @@ export function DocumentsPanel({
     );
   }
 
-  // Group by who provides the doc: borrower-provided vs lender-ordered (the assignee).
+  // Group by who provides the doc: borrower-provided, lender-ordered, or the case-by-case
+  // "Additional Documents" set (assignee "additional"). Empty groups are hidden below.
   const GROUPS: { key: string; label: string; match: (r: ChecklistItem) => boolean }[] = [
-    { key: "borrower", label: "Borrower Provided", match: (r) => r.assignee !== "lending_team" },
+    {
+      key: "borrower",
+      label: "Borrower Provided",
+      match: (r) => r.assignee !== "lending_team" && r.assignee !== "additional",
+    },
     { key: "lender", label: "Lender Ordered", match: (r) => r.assignee === "lending_team" },
+    {
+      key: "additional",
+      label: "Additional Documents (Case by Case)",
+      match: (r) => r.assignee === "additional",
+    },
   ];
   const total = rows.length;
   const approved = rows.filter((r) => r.status === "approved").length;

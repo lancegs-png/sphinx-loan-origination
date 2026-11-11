@@ -4,18 +4,15 @@ import { createServiceRoleClient } from "@/lib/supabase/admin";
 import type { ChecklistItem, LoanDocument } from "@/lib/types";
 
 /**
- * Create a loan's checklist from its program's checklist on first access — so the
+ * Materialize a loan's checklist from its program's checklist on access — so the
  * Documents tab is populated (and borrowers can upload) from Intake onward, not only
- * once the loan reaches Processing. Idempotent: no-ops if the checklist already exists.
+ * once the loan reaches Processing. Additive and idempotent: it upserts the full program
+ * set with ignoreDuplicates, so existing rows (and their statuses/notes) are untouched
+ * while any newly-configured document types are added to loans whose checklist was
+ * materialized before those items existed.
  */
 async function ensureLoanChecklist(loanId: string, programId: string): Promise<void> {
   const admin = createServiceRoleClient();
-  const { count } = await admin
-    .from("loan_checklist_items")
-    .select("id", { count: "exact", head: true })
-    .eq("loan_id", loanId);
-  if ((count ?? 0) > 0) return;
-
   const { data: items } = await admin
     .from("program_checklist_items")
     .select("document_type_id")
