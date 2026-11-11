@@ -1,13 +1,43 @@
 import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { stageLabel } from "@/lib/stages";
+import { stageLabel, STAGES } from "@/lib/stages";
 import { loadLoanChecklist } from "@/lib/checklist";
 import { loadFieldValues } from "@/lib/fields";
 import type { ChecklistItem, FieldDef, FieldValues } from "@/lib/types";
 
 // Default to the current Claude model; overridable via env.
 const MODEL = process.env.ANTHROPIC_MODEL ?? "claude-opus-5-5";
+
+// ---- AI-proposed changes (lender-only; applied only after the user confirms) ----
+export type ProposedFieldUpdate = { key: string; label: string; value: string };
+export type ProposedChecklistUpdate = { document: string; status: string };
+export type ProposedUpdates = {
+  summary: string;
+  fieldUpdates: ProposedFieldUpdate[];
+  stage: { key: string; label: string } | null;
+  checklistUpdates: ProposedChecklistUpdate[];
+};
+export type LoanAnswer = { text: string; proposal: ProposedUpdates | null };
+
+type WritableField = { key: string; label: string; type: string; options: string[]; current: unknown };
+
+// Fields the AI may propose changes to: user-maintained inputs, never calculated/system
+// (those are derived or read-only, and the DB rejects writes to them anyway).
+const WRITABLE_SOURCES = new Set(["intake", "manual", "config"]);
+const CHECK_STATUSES = ["outstanding", "ordered", "update_needed", "approved", "not_applicable"] as const;
+
+function writableFields(defs: FieldDef[], values: FieldValues): WritableField[] {
+  return defs
+    .filter((d) => WRITABLE_SOURCES.has(d.source ?? ""))
+    .map((d) => ({
+      key: d.key,
+      label: d.label,
+      type: d.type,
+      options: d.options ?? [],
+      current: values[d.key]?.current ?? null,
+    }));
+}
 
 /**
  * The AI "record keeper & originator" (design §6).
@@ -24,7 +54,7 @@ export async function answerLoanQuestion(opts: {
   loanId: string;
   question: string;
   isLender: boolean;
-}): Promise<string | null> {
+}): Promise<LoanAnswer | null> {
   const { supabase, loanId, question, isLender } = opts;
 
   const { data: loan } = await supabase
@@ -63,12 +93,18 @@ export async function answerLoanQuestion(opts: {
     loadLoanChecklist(supabase, loanId, loan.program_id),
     // Full loan field values + their definitions (labels/sections), and the people on the deal.
     loadFieldValues(supabase, loanId),
-    supabase.from("field_definitions").select("key,label,section,sort,type,lender_only").order("sort"),
+    supabase
+      .from("field_definitions")
+      .select("key,label,section,sort,type,lender_only,source,options")
+      .order("sort"),
     supabase
       .from("deal_participants")
       .select("participant_role, profiles(full_name,email)")
       .eq("loan_id", loanId),
   ]);
+
+  // Only lenders can propose changes; borrowers/originators stay read-only.
+  const writable = isLender ? writableFields((fieldDefs as FieldDef[]) ?? [], fieldValues ?? {}) : [];
 
   const context = buildContext({
     loan,
@@ -79,6 +115,7 @@ export async function answerLoanQuestion(opts: {
     fieldValues: fieldValues ?? {},
     fieldDefs: (fieldDefs as FieldDef[]) ?? [],
     participants: (participants as ParticipantRow[]) ?? [],
+    writable,
     isLender,
   });
 
@@ -89,11 +126,8 @@ export async function answerLoanQuestion(opts: {
     max_tokens: 1024,
     system: systemPrompt(isLender),
     messages: [{ role: "user", content: `${context}\n\nQuestion: ${question}` }],
+    ...(writable.length ? { tools: [updateTool(writable.map((w) => w.key))] } : {}),
   });
-
-  if (response.stop_reason === "refusal") {
-    return "I'm not able to answer that.";
-  }
 
   const text = response.content
     .filter((b): b is Anthropic.TextBlock => b.type === "text")
@@ -101,7 +135,16 @@ export async function answerLoanQuestion(opts: {
     .join("\n")
     .trim();
 
-  return text || "I don't have that information in this loan's record.";
+  if (response.stop_reason === "refusal") {
+    return { text: "I'm not able to answer that.", proposal: null };
+  }
+
+  const proposal = extractProposal(response, writable);
+
+  return {
+    text: text || (proposal ? proposal.summary : "I don't have that information in this loan's record."),
+    proposal,
+  };
 }
 
 type ConvMessage = {
@@ -128,10 +171,12 @@ function systemPrompt(isLender: boolean): string {
   if (isLender) {
     base.push(
       "You are speaking with a member of the lending team; you may reference internal notes and trade data included in the context.",
+      "If the user asks to change, set, update, correct, add, or move something — a field value, the loan stage, or a document's status — call the propose_loan_updates tool with the proposed change(s) instead of answering in words, and never claim you have changed anything. Nothing is saved until the user confirms the card the tool produces. Only propose fields listed under EDITABLE FIELDS. For questions, answer normally and do not call the tool.",
     );
   } else {
     base.push(
       "You are speaking with the borrower or their originator. Never reveal internal lender notes, trade terms, or confidential information. Only the context you were given is available to you.",
+      "You cannot make any changes to the loan record. If asked to change, set, or update something, say the lending team will need to make that update — never claim you changed anything.",
     );
   }
   return base.join(" ");
@@ -139,6 +184,111 @@ function systemPrompt(isLender: boolean): string {
 
 function money(n: number | null): string {
   return n == null ? "unknown" : `$${n.toLocaleString()}`;
+}
+
+/** The tool the model calls to propose record changes (lender-only). We capture its
+ *  input as a proposal and surface it for the user to confirm — we never auto-apply. */
+function updateTool(writableKeys: string[]): Anthropic.Tool {
+  return {
+    name: "propose_loan_updates",
+    description:
+      "Propose one or more changes to this loan's record for the user to review and confirm. " +
+      "Call this whenever the user asks to change, set, update, correct, add, or move a value — a loan field, the loan stage, or a document's checklist status. " +
+      "Never tell the user you have changed or updated something without calling this tool: the change is only applied after the user clicks Confirm on the card this produces. " +
+      "Do not call it for questions — only when the user is asking for a change.",
+    input_schema: {
+      type: "object",
+      properties: {
+        summary: {
+          type: "string",
+          description: "One short, plain-language sentence describing the proposed change(s).",
+        },
+        field_updates: {
+          type: "array",
+          description: "Changes to loan field values.",
+          items: {
+            type: "object",
+            properties: {
+              key: { type: "string", enum: writableKeys, description: "Field key from the EDITABLE FIELDS list." },
+              value: {
+                type: "string",
+                description:
+                  "The new value as a string (e.g. '8', '8%', '1,200,000', 'Single Family Residence', '2026-01-15'). For a select field, use one of its allowed values.",
+              },
+            },
+            required: ["key", "value"],
+          },
+        },
+        stage: {
+          type: "string",
+          enum: STAGES.map((s) => s.key),
+          description: "New loan stage — only if the user asked to move the loan to a different stage.",
+        },
+        checklist_updates: {
+          type: "array",
+          description: "Changes to document checklist statuses.",
+          items: {
+            type: "object",
+            properties: {
+              document: { type: "string", description: "Document name exactly as shown in the DOCUMENT CHECKLIST." },
+              status: { type: "string", enum: [...CHECK_STATUSES] },
+            },
+            required: ["document", "status"],
+          },
+        },
+      },
+      required: ["summary"],
+    },
+  };
+}
+
+function extractProposal(response: Anthropic.Message, writable: WritableField[]): ProposedUpdates | null {
+  const block = response.content.find(
+    (b): b is Anthropic.ToolUseBlock => b.type === "tool_use" && b.name === "propose_loan_updates",
+  );
+  if (!block) return null;
+  const input = block.input as {
+    summary?: unknown;
+    field_updates?: unknown;
+    stage?: unknown;
+    checklist_updates?: unknown;
+  };
+  const labelOf = new Map(writable.map((w) => [w.key, w.label]));
+
+  const fieldUpdates: ProposedFieldUpdate[] = Array.isArray(input.field_updates)
+    ? input.field_updates
+        .filter(
+          (u): u is { key: string; value: unknown } =>
+            !!u && typeof (u as { key?: unknown }).key === "string" && labelOf.has((u as { key: string }).key),
+        )
+        .map((u) => ({ key: u.key, label: labelOf.get(u.key)!, value: String(u.value ?? "") }))
+    : [];
+
+  const stageKey = typeof input.stage === "string" ? input.stage : null;
+  const stage =
+    stageKey && STAGES.some((s) => s.key === stageKey) ? { key: stageKey, label: stageLabel(stageKey) } : null;
+
+  const statusSet = new Set<string>(CHECK_STATUSES);
+  const checklistUpdates: ProposedChecklistUpdate[] = Array.isArray(input.checklist_updates)
+    ? input.checklist_updates
+        .filter(
+          (u): u is { document: string; status: string } =>
+            !!u &&
+            typeof (u as { document?: unknown }).document === "string" &&
+            typeof (u as { status?: unknown }).status === "string" &&
+            statusSet.has((u as { status: string }).status),
+        )
+        .map((u) => ({ document: u.document, status: u.status }))
+    : [];
+
+  if (!fieldUpdates.length && !stage && !checklistUpdates.length) return null;
+  return {
+    summary:
+      typeof input.summary === "string" && input.summary.trim() ? input.summary.trim() : "Apply these changes?",
+    fieldUpdates,
+    stage,
+    checklistUpdates,
+  };
 }
 
 function buildContext(args: {
@@ -160,9 +310,10 @@ function buildContext(args: {
   fieldValues: FieldValues;
   fieldDefs: FieldDef[];
   participants: ParticipantRow[];
+  writable: WritableField[];
   isLender: boolean;
 }): string {
-  const { loan, program, messages, notes, checklist, fieldValues, fieldDefs, participants, isLender } = args;
+  const { loan, program, messages, notes, checklist, fieldValues, fieldDefs, participants, writable, isLender } = args;
 
   const lines: string[] = [];
   lines.push("=== LOAN RECORD ===");
@@ -222,6 +373,19 @@ function buildContext(args: {
     for (const [sec, items] of bySection) {
       lines.push(`[${SECTION_LABEL[sec] ?? sec}]`);
       lines.push(...items);
+    }
+  }
+
+  // Fields the lender may ask the AI to change. The AI proposes against these keys;
+  // nothing is written until the user confirms.
+  if (writable.length) {
+    lines.push("");
+    lines.push("=== EDITABLE FIELDS (propose changes to these with propose_loan_updates) ===");
+    lines.push("Format — key — Label (type): current value. Use the key when proposing a change.");
+    for (const w of writable) {
+      const cur = w.current == null || w.current === "" ? "(empty)" : String(w.current);
+      const opts = w.type === "select" && w.options.length ? ` [allowed: ${w.options.join(", ")}]` : "";
+      lines.push(`- ${w.key} — ${w.label} (${w.type}): ${cur}${opts}`);
     }
   }
 

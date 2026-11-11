@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { askAi, intakeTurn, generateTermSheet, signTermSheet } from "@/app/actions";
+import { askAi, intakeTurn, generateTermSheet, signTermSheet, applyLoanUpdates } from "@/app/actions";
 import { IntakeFormCard } from "@/components/intake-form-card";
-import type { Message } from "@/lib/types";
+import type { Message, ProposedUpdatesPayload } from "@/lib/types";
 
 function roleLabel(m: Message): string {
   if (m.sender_kind === "ai") return "AI System";
@@ -37,11 +38,13 @@ export function Chat({
   intakeMode: boolean;
 }) {
   const supabase = useMemo(() => createClient(), []);
+  const router = useRouter();
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [body, setBody] = useState("");
   const [internal, setInternal] = useState(false);
   const [busy, setBusy] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
+  const [applying, setApplying] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
 
@@ -197,6 +200,23 @@ export function Chat({
     else await refreshMessages(); // pull in the AI reply (don't depend on realtime)
   }
 
+  // The user confirmed the AI's proposed record changes. Apply them, then pull in the
+  // confirmation message and refresh the server-rendered field values.
+  async function applyUpdates(updates: ProposedUpdatesPayload) {
+    setApplying(true);
+    setAiError(null);
+    const res = await applyLoanUpdates({ loanId, updates });
+    setApplying(false);
+    if (!res.ok) setAiError(res.error ?? "Couldn’t apply the changes.");
+    await refreshMessages();
+    router.refresh(); // reload the Loan Info values the change touched
+  }
+
+  // Declined — a short note moves the proposal off the last line so the card hides.
+  async function cancelUpdates() {
+    await insertHuman("Let’s not make that change.", isLender);
+  }
+
   return (
     <section className="flex min-h-0 flex-1 flex-col bg-bg">
       <div className="flex-1 space-y-5 overflow-y-auto px-6 py-6">
@@ -269,6 +289,52 @@ export function Chat({
                 >
                   Sign term sheet
                 </button>
+              )}
+              {m.payload?.updates && idx === messages.length - 1 && (
+                <div className="card mt-3 px-4 py-3">
+                  <p className="text-sm font-semibold text-fg">Proposed changes</p>
+                  <ul className="mt-2 space-y-1 text-[0.9375rem] text-fg">
+                    {m.payload.updates.fields.map((f) => (
+                      <li key={`f-${f.key}`} className="flex flex-wrap gap-x-2">
+                        <span className="text-muted">{f.label}</span>
+                        <span aria-hidden>→</span>
+                        <span className="font-medium">{f.value}</span>
+                      </li>
+                    ))}
+                    {m.payload.updates.stage && (
+                      <li className="flex flex-wrap gap-x-2">
+                        <span className="text-muted">Stage</span>
+                        <span aria-hidden>→</span>
+                        <span className="font-medium">{m.payload.updates.stage.label}</span>
+                      </li>
+                    )}
+                    {m.payload.updates.checklist.map((c) => (
+                      <li key={`c-${c.document}`} className="flex flex-wrap gap-x-2">
+                        <span className="text-muted">{c.document}</span>
+                        <span aria-hidden>→</span>
+                        <span className="font-medium">{c.status.replace(/_/g, " ")}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="mt-3 flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => applyUpdates(m.payload!.updates!)}
+                      disabled={applying || busy || aiBusy}
+                      className="btn btn-primary"
+                    >
+                      {applying ? "Applying…" : "Confirm"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={cancelUpdates}
+                      disabled={applying || busy || aiBusy}
+                      className="btn btn-secondary"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
               )}
             </div>
           );

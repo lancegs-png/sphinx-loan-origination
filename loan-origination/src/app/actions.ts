@@ -15,6 +15,7 @@ import { syncLoanToDashboard } from "@/lib/google/dashboard";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { logEvent } from "@/lib/audit";
 import { answerLoanQuestion } from "@/lib/ai/record-keeper";
+import { loadLoanChecklist } from "@/lib/checklist";
 import { STAGES } from "@/lib/stages";
 import {
   runIntakeTurn,
@@ -1059,7 +1060,7 @@ export async function askAi(
     .single();
   const isLender = !!profile?.is_lending_team;
 
-  let answer: string | null;
+  let answer: Awaited<ReturnType<typeof answerLoanQuestion>>;
   try {
     answer = await answerLoanQuestion({ supabase, loanId, question, isLender });
   } catch (err) {
@@ -1068,6 +1069,19 @@ export async function askAi(
 
   // null = caller has no access to this loan; do not persist anything.
   if (answer === null) return { ok: false, error: "No access to this loan." };
+
+  // When the AI proposed record changes (lender only), attach them to the message as a
+  // Confirm/Cancel card. Nothing is written until the user confirms (see applyLoanUpdates).
+  const payload = answer.proposal
+    ? {
+        updates: {
+          summary: answer.proposal.summary,
+          fields: answer.proposal.fieldUpdates,
+          stage: answer.proposal.stage,
+          checklist: answer.proposal.checklistUpdates,
+        },
+      }
+    : null;
 
   // System write of the AI reply (retrieval above was user-scoped; see §5.1).
   // CRITICAL: a lender's answer may draw on internal notes/trade data, so it must
@@ -1079,9 +1093,143 @@ export async function askAi(
     sender_kind: "ai",
     sender_role: "ai",
     is_internal: isLender,
-    body: answer,
+    body: answer.text,
+    payload,
   });
   if (error) return { ok: false, error: error.message };
 
+  return { ok: true };
+}
+
+/**
+ * Apply AI-proposed record changes after the user confirms them on the chat card
+ * (R-CHAT). Lending team only. Each change is re-validated and routed through the same
+ * server actions the UI uses (field save + recompute, stage change, checklist status),
+ * so the AI can never do more than the lender could do by hand. Posts a confirmation
+ * message summarizing what was applied.
+ */
+export async function applyLoanUpdates(input: {
+  loanId: string;
+  updates: {
+    summary?: string;
+    fields: { key: string; label: string; value: string }[];
+    stage: { key: string; label: string } | null;
+    checklist: { document: string; status: string }[];
+  };
+}): Promise<{ ok: boolean; error?: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("is_lending_team")
+    .eq("id", user.id)
+    .single();
+  if (!profile?.is_lending_team) return { ok: false, error: "Lending team only." };
+
+  const { loanId, updates } = input;
+  const applied: string[] = [];
+  const failed: string[] = [];
+
+  // Field values — only user-maintained fields (never calculated/system).
+  const keys = (updates.fields ?? []).map((f) => f.key);
+  if (keys.length) {
+    const admin = createServiceRoleClient();
+    const { data: defs } = await admin
+      .from("field_definitions")
+      .select("key,type,source,options")
+      .in("key", keys);
+    const defMap = new Map(
+      (defs ?? []).map((d) => [d.key, d as { type: string; source: string | null; options: string[] | null }]),
+    );
+    // The displayed value is verified ?? initial. To make the change actually show, write
+    // to whichever kind is currently active: verified if one exists, otherwise initial.
+    const { data: existing } = await admin
+      .from("loan_field_values")
+      .select("field_key,verified_value")
+      .eq("loan_id", loanId)
+      .eq("idx", 1)
+      .in("field_key", keys);
+    const hasVerified = new Set(
+      (existing ?? [])
+        .filter((r) => r.verified_value != null && r.verified_value !== "")
+        .map((r) => r.field_key),
+    );
+    for (const f of updates.fields) {
+      const def = defMap.get(f.key);
+      if (!def) {
+        failed.push(`${f.label || f.key} (unknown field)`);
+        continue;
+      }
+      if (def.source === "calculated" || def.source === "system") {
+        failed.push(`${f.label} (calculated — can't be edited)`);
+        continue;
+      }
+      // A dropdown field only accepts one of its options — otherwise it saves a value the
+      // UI can't display. Match case-insensitively and store the option's canonical casing.
+      let value = f.value;
+      if (def.type === "select" && def.options?.length) {
+        const match = def.options.find((o) => o.toLowerCase() === f.value.trim().toLowerCase());
+        if (!match) {
+          failed.push(`${f.label} (“${f.value}” must be one of: ${def.options.join(", ")})`);
+          continue;
+        }
+        value = match;
+      }
+      const valueKind = hasVerified.has(f.key) ? "verified" : "initial";
+      const res = await saveLoanField({ loanId, key: f.key, type: def.type, value, valueKind });
+      if (res.ok) applied.push(`${f.label} → ${value}`);
+      else failed.push(`${f.label} (${res.error})`);
+    }
+  }
+
+  // Stage.
+  if (updates.stage) {
+    const res = await setLoanStage({ loanId, stage: updates.stage.key });
+    if (res.ok) applied.push(`Stage → ${updates.stage.label}`);
+    else failed.push(`Stage (${res.error})`);
+  }
+
+  // Document checklist statuses — resolve each document name to its item.
+  if (updates.checklist?.length) {
+    const { data: loan } = await supabase.from("loans").select("program_id").eq("id", loanId).single();
+    const checklist = await loadLoanChecklist(supabase, loanId, loan?.program_id ?? null);
+    const byName = new Map(checklist.map((c) => [c.name.toLowerCase(), c]));
+    const STATUS_LABEL: Record<string, string> = {
+      outstanding: "Outstanding",
+      ordered: "Ordered",
+      update_needed: "Update needed",
+      approved: "Approved",
+      not_applicable: "N/A",
+    };
+    for (const c of updates.checklist) {
+      const item = byName.get(c.document.trim().toLowerCase());
+      if (!item) {
+        failed.push(`${c.document} (no such document)`);
+        continue;
+      }
+      const res = await setChecklistItemStatus({ loanId, itemId: item.id, status: c.status });
+      if (res.ok) applied.push(`${item.name} → ${STATUS_LABEL[c.status] ?? c.status}`);
+      else failed.push(`${item.name} (${res.error})`);
+    }
+  }
+
+  // Post a confirmation of what landed. Lender exchange stays team-only.
+  const parts: string[] = [];
+  if (applied.length) parts.push(`Done — ${applied.join("; ")}.`);
+  if (failed.length) parts.push(`Couldn’t apply: ${failed.join("; ")}.`);
+  const body = parts.join(" ") || "No changes were applied.";
+  const admin = createServiceRoleClient();
+  await admin.from("messages").insert({
+    loan_id: loanId,
+    sender_kind: "ai",
+    sender_role: "ai",
+    is_internal: true,
+    body,
+  });
+
+  if (!applied.length && failed.length) return { ok: false, error: failed.join("; ") };
   return { ok: true };
 }

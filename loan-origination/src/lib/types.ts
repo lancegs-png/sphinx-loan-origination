@@ -35,11 +35,20 @@ export type FormFieldSpec = {
   required?: boolean;
 };
 
+// AI-proposed record changes, awaiting the user's Confirm (renders a review card).
+export type ProposedUpdatesPayload = {
+  summary: string;
+  fields: { key: string; label: string; value: string }[];
+  stage: { key: string; label: string } | null;
+  checklist: { document: string; status: string }[];
+};
+
 export type MessagePayload = {
   form?: { intro?: string; fields: FormFieldSpec[] };
   proceed?: boolean; // renders Yes/No ("proceed with the quoted terms?")
   sign?: boolean; // renders a "Sign term sheet" control
   doc?: { title: string; url: string }; // renders a clickable document card (opens in a new tab)
+  updates?: ProposedUpdatesPayload; // renders a Confirm/Cancel card for AI-proposed changes
 };
 
 export type Message = {
