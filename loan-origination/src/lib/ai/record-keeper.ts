@@ -2,6 +2,9 @@ import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { stageLabel } from "@/lib/stages";
+import { loadLoanChecklist } from "@/lib/checklist";
+import { loadFieldValues } from "@/lib/fields";
+import type { ChecklistItem, FieldDef, FieldValues } from "@/lib/types";
 
 // Default to the current Claude model; overridable via env.
 const MODEL = process.env.ANTHROPIC_MODEL ?? "claude-opus-5-5";
@@ -35,7 +38,15 @@ export async function answerLoanQuestion(opts: {
   // RLS returns null when the caller isn't a participant — no access, no answer.
   if (!loan) return null;
 
-  const [{ data: program }, { data: messages }, notesResult] = await Promise.all([
+  const [
+    { data: program },
+    { data: messages },
+    notesResult,
+    checklist,
+    fieldValues,
+    { data: fieldDefs },
+    { data: participants },
+  ] = await Promise.all([
     loan.program_id
       ? supabase.from("loan_programs").select("name,public_info").eq("id", loan.program_id).single()
       : Promise.resolve({ data: null }),
@@ -48,6 +59,15 @@ export async function answerLoanQuestion(opts: {
     isLender
       ? supabase.from("internal_notes").select("body,created_at").eq("loan_id", loanId)
       : Promise.resolve({ data: [] as { body: string; created_at: string }[] }),
+    // The document checklist (statuses + notes) so the AI can answer what's outstanding.
+    loadLoanChecklist(supabase, loanId, loan.program_id),
+    // Full loan field values + their definitions (labels/sections), and the people on the deal.
+    loadFieldValues(supabase, loanId),
+    supabase.from("field_definitions").select("key,label,section,sort,type,lender_only").order("sort"),
+    supabase
+      .from("deal_participants")
+      .select("participant_role, profiles(full_name,email)")
+      .eq("loan_id", loanId),
   ]);
 
   const context = buildContext({
@@ -55,6 +75,10 @@ export async function answerLoanQuestion(opts: {
     program: program as { name: string; public_info: string | null } | null,
     messages: (messages as ConvMessage[]) ?? [],
     notes: (notesResult.data as { body: string }[]) ?? [],
+    checklist: checklist ?? [],
+    fieldValues: fieldValues ?? {},
+    fieldDefs: (fieldDefs as FieldDef[]) ?? [],
+    participants: (participants as ParticipantRow[]) ?? [],
     isLender,
   });
 
@@ -87,6 +111,9 @@ type ConvMessage = {
   body: string;
   created_at: string;
 };
+
+type ProfileRef = { full_name: string | null; email: string | null };
+type ParticipantRow = { participant_role: string; profiles: ProfileRef | ProfileRef[] | null };
 
 function systemPrompt(isLender: boolean): string {
   const base = [
@@ -126,9 +153,13 @@ function buildContext(args: {
   program: { name: string; public_info: string | null } | null;
   messages: ConvMessage[];
   notes: { body: string }[];
+  checklist: ChecklistItem[];
+  fieldValues: FieldValues;
+  fieldDefs: FieldDef[];
+  participants: ParticipantRow[];
   isLender: boolean;
 }): string {
-  const { loan, program, messages, notes, isLender } = args;
+  const { loan, program, messages, notes, checklist, fieldValues, fieldDefs, participants, isLender } = args;
 
   const lines: string[] = [];
   lines.push("=== LOAN RECORD ===");
@@ -150,6 +181,74 @@ function buildContext(args: {
     lines.push("=== PROGRAM ===");
     lines.push(`Program: ${program.name}`);
     if (program.public_info) lines.push(program.public_info);
+  }
+
+  // Full loan field values (current = verified ?? initial), grouped by section. Internal
+  // sections and lender-only fields are omitted for non-lenders.
+  const INTERNAL_SECTIONS = new Set(["trade", "closing", "data_tape"]);
+  const SECTION_LABEL: Record<string, string> = {
+    loan: "Loan Information",
+    property: "Property Information",
+    dscr_calc: "DSCR Calculation",
+    trade: "Trade Information",
+    borrower: "Borrower Information",
+    contact: "Contacts",
+    closing: "Closing Calculations",
+    data_tape: "Data Tape",
+    additional: "Additional Information",
+  };
+  const bySection = new Map<string, string[]>();
+  for (const d of fieldDefs) {
+    if (!isLender && (d.lender_only || INTERNAL_SECTIONS.has(d.section))) continue;
+    const cur = fieldValues[d.key]?.current;
+    if (cur == null || cur === "") continue;
+    const s = String(cur);
+    const val =
+      d.type === "currency"
+        ? `$${Number(s.replace(/[^0-9.-]/g, "")).toLocaleString()}`
+        : d.type === "percent"
+          ? `${s}%`
+          : s;
+    const arr = bySection.get(d.section) ?? [];
+    arr.push(`  ${d.label}: ${val}`);
+    bySection.set(d.section, arr);
+  }
+  if (bySection.size) {
+    lines.push("");
+    lines.push("=== LOAN DETAILS (Loan Info tab) ===");
+    for (const [sec, items] of bySection) {
+      lines.push(`[${SECTION_LABEL[sec] ?? sec}]`);
+      lines.push(...items);
+    }
+  }
+
+  if (participants.length) {
+    lines.push("");
+    lines.push("=== PEOPLE ON THIS DEAL (People tab) ===");
+    for (const p of participants) {
+      const prof = Array.isArray(p.profiles) ? p.profiles[0] : p.profiles;
+      const name = prof?.full_name || prof?.email || "Unknown";
+      const email = prof?.email ? ` <${prof.email}>` : "";
+      lines.push(`- ${name}${email} — ${p.participant_role.replace(/_/g, " ")}`);
+    }
+  }
+
+  if (checklist.length) {
+    const STATUS_LABEL: Record<string, string> = {
+      outstanding: "Outstanding (not yet received)",
+      ordered: "Ordered",
+      update_needed: "Update needed",
+      approved: "Approved / received",
+      not_applicable: "N/A",
+    };
+    lines.push("");
+    lines.push("=== DOCUMENT CHECKLIST ===");
+    lines.push("Each item is a required document and its current status.");
+    for (const c of checklist) {
+      const status = STATUS_LABEL[c.status] ?? c.status;
+      const who = c.assignee === "lending_team" ? "lender-ordered" : c.assignee === "additional" ? "case-by-case" : "borrower-provided";
+      lines.push(`- ${c.name} [${who}]: ${status}${c.notes ? ` — note: ${c.notes}` : ""}`);
+    }
   }
 
   if (messages.length) {
