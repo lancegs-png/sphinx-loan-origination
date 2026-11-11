@@ -58,7 +58,10 @@ function fmtDisplay(def: FieldDef, v: string): string {
   if (!v) return "—";
   if (def.type === "currency") {
     const n = Number(v.replace(/[^0-9.-]/g, ""));
-    return Number.isFinite(n) ? `$${Math.round(n).toLocaleString("en-US")}` : v;
+    if (!Number.isFinite(n)) return v;
+    // Two decimals when there are cents ($1,128.35); drop them when whole ($157,500).
+    const minimumFractionDigits = Number.isInteger(n) ? 0 : 2;
+    return `$${n.toLocaleString("en-US", { minimumFractionDigits, maximumFractionDigits: 2 })}`;
   }
   if (def.type === "percent") return /%\s*$/.test(v) ? v : `${v}%`;
   return v;
@@ -332,8 +335,32 @@ function CellInput({
   placeholder?: string;
   onCommit: (v: string) => void;
 }) {
-  const [value, setValue] = useState(base);
+  const isCurrency = def.type === "currency";
+  // Currency fields display with thousands separators and two decimals ($xxx,xxx.00).
+  const fmtCurrency = (s: string): string => {
+    if (s.trim() === "") return "";
+    const n = Number(s.replace(/[^0-9.-]/g, ""));
+    if (!Number.isFinite(n)) return s;
+    const minimumFractionDigits = Number.isInteger(n) ? 0 : 2;
+    return n.toLocaleString("en-US", { minimumFractionDigits, maximumFractionDigits: 2 });
+  };
+  const [value, setValue] = useState(isCurrency ? fmtCurrency(base) : base);
   const taRef = useRef<HTMLTextAreaElement>(null);
+
+  // Commit on blur. For currency, reformat to $xxx,xxx.00 and only save when the
+  // numeric amount actually changed (so re-formatting doesn't trigger a redundant save).
+  const commit = () => {
+    if (isCurrency) {
+      const n = Number(value.replace(/[^0-9.-]/g, ""));
+      const baseN = Number(String(base).replace(/[^0-9.-]/g, ""));
+      const formatted = fmtCurrency(value);
+      if (formatted !== value) setValue(formatted);
+      const changed = value.trim() === "" ? String(base).trim() !== "" : n !== baseN;
+      if (changed) onCommit(formatted);
+      return;
+    }
+    if (value !== base) onCommit(value);
+  };
   const cls =
     "w-full bg-transparent px-2 py-1.5 text-sm text-fg outline-none focus:bg-gold/5 disabled:opacity-50";
 
@@ -396,9 +423,7 @@ function CellInput({
       disabled={disabled}
       placeholder={placeholder}
       onChange={(e) => setValue(e.target.value)}
-      onBlur={() => {
-        if (value !== base) onCommit(value);
-      }}
+      onBlur={commit}
       className={`w-full bg-transparent py-1.5 text-sm text-fg outline-none disabled:opacity-50 ${
         prefix ? "pl-1" : "pl-2"
       } ${suffix ? "pr-1" : "pr-2"}`}
