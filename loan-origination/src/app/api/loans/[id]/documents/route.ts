@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { driveConfigured, createDealFolder, uploadFileToDrive } from "@/lib/google/drive";
+import { loadGuarantorNames } from "@/lib/fields";
 import { logEvent } from "@/lib/audit";
 
 export const runtime = "nodejs";
@@ -50,8 +51,15 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const useDrive = driveConfigured();
   if (useDrive && !driveFolderId) {
     try {
+      // Folder name: [Loan#] Property Address [Guarantor] — matches Open Loan Files.
       const ref = loan.loan_number ?? loan.opportunity_number;
-      const label = [ref, loan.property_address].filter(Boolean).join(" — ") || ref || loanId;
+      const guarantor = (await loadGuarantorNames(supabase))[loanId];
+      const label =
+        [`[${ref}]`, loan.property_address ?? "", guarantor ? `[${guarantor}]` : ""]
+          .filter(Boolean)
+          .join(" ")
+          .replace(/\s+/g, " ")
+          .trim() || String(ref);
       driveFolderId = await createDealFolder(label);
       await admin.from("loans").update({ drive_folder_id: driveFolderId }).eq("id", loanId);
     } catch {

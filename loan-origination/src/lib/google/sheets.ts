@@ -69,6 +69,19 @@ export async function writeSheetValues(sheetId: string, rows: (string | number)[
   });
 }
 
+/** Append a single row to the end of a tab (Sheets API values:append). */
+export async function appendSheetRow(
+  sheetId: string,
+  tab: string,
+  values: (string | number)[],
+): Promise<void> {
+  const range = `${tab.includes(" ") ? `'${tab}'` : tab}!A1`;
+  await api(
+    `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(range)}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
+    { method: "POST", body: JSON.stringify({ values: [values] }) },
+  );
+}
+
 export function sheetUrl(sheetId: string): string {
   return `https://docs.google.com/spreadsheets/d/${sheetId}`;
 }

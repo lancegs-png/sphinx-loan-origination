@@ -10,7 +10,7 @@ import {
   writeIntakeFields,
 } from "@/lib/fields";
 import { recomputeLoan } from "@/lib/calc";
-import { sheetsConfigured, createLoanSheet, writeSheetValues, sheetUrl } from "@/lib/google/sheets";
+import { sheetsConfigured, createLoanSheet, writeSheetValues, sheetUrl, appendSheetRow } from "@/lib/google/sheets";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { logEvent } from "@/lib/audit";
 import { answerLoanQuestion } from "@/lib/ai/record-keeper";
@@ -23,6 +23,10 @@ import {
   type QuoteField,
 } from "@/lib/ai/intake";
 import type { DealContact, InternalNote } from "@/lib/types";
+
+/** Org-level "Loan Tracker" sheet (Loan Number Tracker tab); overridable via env. */
+const LOAN_TRACKER_SHEET_ID =
+  process.env.GOOGLE_LOAN_TRACKER_SHEET_ID || "1FLrQZqFAJ7v-8cZeT3EGTPJ_Vut6JLPp_rNSXwEbm4Y";
 
 /**
  * Add Loan (R-UI-11): a lending-team user starts a new loan, which opens its chat.
@@ -389,7 +393,7 @@ export async function signTermSheet(loanId: string): Promise<{ ok: boolean; erro
     .single();
   const { data: loan } = await supabase
     .from("loans")
-    .select("loan_number,opportunity_number,custom_fields")
+    .select("loan_number,opportunity_number,property_address,custom_fields")
     .eq("id", loanId)
     .single();
   if (!loan) return { ok: false, error: "No access to this loan." };
@@ -404,10 +408,24 @@ export async function signTermSheet(loanId: string): Promise<{ ok: boolean; erro
 
   // Opportunity -> loan: on first signature, assign the permanent SPHX loan number.
   // Idempotent and grandfather-safe — returns the existing number if one is set.
+  const wasNewNumber = !loan.loan_number;
   let loanNumber = loan.loan_number;
   if (!loanNumber) {
     const { data: assigned } = await admin.rpc("assign_loan_number", { p_loan_id: loanId });
     loanNumber = (assigned as string | null) ?? loan.opportunity_number;
+  }
+
+  // On first signing (the SPHX number was just assigned), add a row to the org
+  // "Loan Tracker" sheet: [Address, Loan Number]. Best-effort — never block signing.
+  if (wasNewNumber && loanNumber && sheetsConfigured()) {
+    try {
+      await appendSheetRow(LOAN_TRACKER_SHEET_ID, "Loan Number Tracker", [
+        loan.property_address ?? "",
+        loanNumber,
+      ]);
+    } catch {
+      /* ignore tracker failures */
+    }
   }
 
   const custom = {

@@ -22,7 +22,7 @@ const STATUS_CELL: Record<string, string> = {
 };
 
 // Four-column spreadsheet grid shared by the header and every row.
-const GRID = "grid grid-cols-[minmax(8rem,22%)_8.5rem_minmax(0,1fr)_minmax(6rem,18%)] items-stretch";
+const GRID = "grid grid-cols-[minmax(14rem,1.7fr)_8.5rem_minmax(0,1.3fr)_minmax(6rem,16%)] items-stretch";
 
 export function DocumentsPanel({
   loanId,
@@ -191,7 +191,7 @@ export function DocumentsPanel({
                         <div className={`${GRID} min-h-[2.25rem]`}>
                           {/* Document + upload */}
                           <div className="flex items-center gap-2 px-3 py-1.5 font-medium text-fg">
-                            <span className="truncate" title={r.name}>
+                            <span className="min-w-0 break-words" title={r.name}>
                               {r.name}
                             </span>
                             {canEdit && (
