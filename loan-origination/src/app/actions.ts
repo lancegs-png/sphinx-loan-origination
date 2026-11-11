@@ -716,12 +716,14 @@ export async function syncLoanToSheet(
     return { ok: false, error: "Google Sheets isn't configured yet (GOOGLE_SERVICE_ACCOUNT_JSON)." };
 
   const admin = createServiceRoleClient();
-  const { data: loan } = await admin
+  const { data: loan, error: loanErr } = await admin
     .from("loans")
     .select("loan_number,opportunity_number,sheet_id,drive_folder_id")
     .eq("id", loanId)
     .single();
-  if (!loan) return { ok: false, error: "No access to this loan." };
+  // Surface the real DB error (e.g. a missing column) rather than masking it as access.
+  if (loanErr) return { ok: false, error: `Could not load the loan: ${loanErr.message}` };
+  if (!loan) return { ok: false, error: "Loan not found." };
   const ref = loan.loan_number ?? loan.opportunity_number;
 
   const [{ data: defs }, { data: vals }] = await Promise.all([
