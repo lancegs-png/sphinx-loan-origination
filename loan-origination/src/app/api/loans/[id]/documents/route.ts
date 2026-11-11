@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
-import { driveConfigured, createDealFolder, createDealDashboard, uploadFileToDrive } from "@/lib/google/drive";
+import { driveConfigured, findDealFolderByStreet, createDealFolder, createDealDashboard, uploadFileToDrive } from "@/lib/google/drive";
 import { loadGuarantorNames } from "@/lib/fields";
 import { resolveDocumentBaseName, indexedName, fileExt, propertyStreet } from "@/lib/documents/naming";
 import { logEvent } from "@/lib/audit";
@@ -52,16 +52,19 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const useDrive = driveConfigured();
   if (useDrive && !driveFolderId) {
     try {
-      // Folder name: [Loan#] Property Address [Guarantor] — matches Open Loan Files.
       const ref = loan.loan_number ?? loan.opportunity_number;
       const guarantor = (await loadGuarantorNames(supabase))[loanId];
+      // Reuse the loan's existing "Open Loan Files" folder (matched by street) if one
+      // exists, so we don't create a duplicate; otherwise create one named to match that
+      // convention ("<Address> [Guarantor]").
+      const existing = await findDealFolderByStreet(propertyStreet(loan.property_address ?? "")).catch(() => null);
       const label =
-        [`[${ref}]`, loan.property_address ?? "", guarantor ? `[${guarantor}]` : ""]
+        [loan.property_address ?? "", guarantor ? `[${guarantor}]` : ""]
           .filter(Boolean)
           .join(" ")
           .replace(/\s+/g, " ")
           .trim() || String(ref);
-      driveFolderId = await createDealFolder(label);
+      driveFolderId = existing ?? (await createDealFolder(label));
 
       // Persist the folder id and seed the deal's dashboard in parallel (independent work).
       // The dashboard is DSCR-only for now (the only template), named "Loan Dashboard -

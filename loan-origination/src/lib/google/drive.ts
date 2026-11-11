@@ -36,6 +36,31 @@ async function accessToken(): Promise<string> {
   return t.token;
 }
 
+/**
+ * Find an existing deal folder under the configured parent whose name contains the
+ * property `street` (e.g. "713 S Tipton St"). Lets the app reuse a folder created outside
+ * the app (the "Open Loan Files" convention) instead of creating a duplicate. Returns the
+ * single match's id, or null when there are zero or multiple matches (ambiguous — the
+ * caller then creates a new one) or Drive isn't configured.
+ */
+export async function findDealFolderByStreet(street: string): Promise<string | null> {
+  const parent = process.env.GOOGLE_DRIVE_PARENT_FOLDER_ID;
+  if (!parent || !street.trim()) return null;
+  const token = await accessToken();
+  const esc = street.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+  const q =
+    `'${parent}' in parents and mimeType='application/vnd.google-apps.folder'` +
+    ` and trashed=false and name contains '${esc}'`;
+  const url =
+    `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}` +
+    `&fields=files(id,name)&supportsAllDrives=true&includeItemsFromAllDrives=true&pageSize=10`;
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  if (!res.ok) return null;
+  const json = (await res.json()) as { files?: { id: string; name: string }[] };
+  const files = json.files ?? [];
+  return files.length === 1 ? files[0].id : null;
+}
+
 /** Create a Drive folder for a deal under the configured parent; returns its id. */
 export async function createDealFolder(name: string): Promise<string> {
   const parent = process.env.GOOGLE_DRIVE_PARENT_FOLDER_ID;

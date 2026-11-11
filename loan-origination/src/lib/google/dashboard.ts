@@ -2,7 +2,7 @@ import "server-only";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { loadFieldValues } from "@/lib/fields";
 import { propertyStreet } from "@/lib/documents/naming";
-import { createDealDashboard } from "./drive";
+import { findDealFolderByStreet, createDealDashboard } from "./drive";
 import { writeCells, sheetUrl } from "./sheets";
 
 /**
@@ -133,7 +133,15 @@ export async function syncLoanToDashboard(loanId: string): Promise<{ url: string
   if (!loan) throw new Error("Loan not found.");
   if ((loan.loan_type ?? "").toUpperCase() !== "DSCR")
     throw new Error("Dashboard sync is DSCR-only for now (the only mapped template).");
-  if (!loan.drive_folder_id)
+  // Reuse the loan's existing "Open Loan Files" folder (matched by street) if the loan
+  // isn't linked to one yet — so a script-created or externally-foldered loan can sync
+  // without first creating a duplicate folder via a document upload.
+  let driveFolderId = loan.drive_folder_id as string | null;
+  if (!driveFolderId) {
+    driveFolderId = await findDealFolderByStreet(propertyStreet(loan.property_address)).catch(() => null);
+    if (driveFolderId) await admin.from("loans").update({ drive_folder_id: driveFolderId }).eq("id", loanId);
+  }
+  if (!driveFolderId)
     throw new Error("This deal has no Drive folder yet — upload a document to create it, then sync.");
 
   const ref = loan.loan_number ?? loan.opportunity_number ?? "";
@@ -144,7 +152,7 @@ export async function syncLoanToDashboard(loanId: string): Promise<{ url: string
     const name = `Loan Dashboard - ${propertyStreet(loan.property_address)} - ${ref}`
       .replace(/\s+/g, " ")
       .trim();
-    sheetId = await createDealDashboard(loan.drive_folder_id, name);
+    sheetId = await createDealDashboard(driveFolderId, name);
     await admin.from("loans").update({ sheet_id: sheetId }).eq("id", loanId);
   }
 
