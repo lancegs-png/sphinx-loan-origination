@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { StageBar } from "./stage-bar";
+import { StageSelect } from "./stage-select";
 import { DealTabs } from "./deal-tabs";
 import type { ActivityEvent } from "@/lib/activity";
 import type {
@@ -12,6 +13,13 @@ import type {
   Message,
   Participant,
 } from "@/lib/types";
+
+/** Format a stored YYYY-MM-DD date as MM/DD/YYYY (no timezone shift); "—" when empty. */
+function fmtCloseDate(d: string | null | undefined): string {
+  if (!d) return "—";
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(d);
+  return m ? `${m[2]}/${m[3]}/${m[1]}` : d;
+}
 
 export function DealView({
   loan,
@@ -76,10 +84,11 @@ export function DealView({
               ${loan.loan_amount.toLocaleString()}
             </span>
           )}
-          <span className="text-sm text-muted">Close {loan.closing_date ?? "—"}</span>
+          <span className="text-sm text-muted">Close {fmtCloseDate(loan.closing_date)}</span>
         </div>
-        <div className="mt-4">
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
           <StageBar currentStage={loan.stage} />
+          {isLender && <StageSelect loanId={loan.id} currentStage={loan.stage} />}
         </div>
       </header>
 

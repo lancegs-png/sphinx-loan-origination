@@ -14,6 +14,7 @@ import { sheetsConfigured, createLoanSheet, writeSheetValues, sheetUrl, appendSh
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { logEvent } from "@/lib/audit";
 import { answerLoanQuestion } from "@/lib/ai/record-keeper";
+import { STAGES } from "@/lib/stages";
 import {
   runIntakeTurn,
   detectLoanTypeKey,
@@ -582,6 +583,45 @@ export async function setLoanFieldLock(input: {
     actorId: user.id,
   });
   if (error) return { ok: false, error: error.message };
+  return { ok: true };
+}
+
+/** Manually set a loan's stage (lending team only). Validates the stage and logs it. */
+export async function setLoanStage(input: {
+  loanId: string;
+  stage: string;
+}): Promise<{ ok: boolean; error?: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+
+  const { data: me } = await supabase
+    .from("profiles")
+    .select("lender_user_type")
+    .eq("id", user.id)
+    .single();
+  if (!me?.lender_user_type) return { ok: false, error: "Lending team only." };
+
+  if (!STAGES.some((s) => s.key === input.stage)) return { ok: false, error: "Unknown stage." };
+
+  // RLS limits this read to loans the caller can access.
+  const { data: loan } = await supabase.from("loans").select("stage").eq("id", input.loanId).single();
+  if (!loan) return { ok: false, error: "No access to this loan." };
+  if (loan.stage === input.stage) return { ok: true };
+
+  const admin = createServiceRoleClient();
+  const { error } = await admin.from("loans").update({ stage: input.stage }).eq("id", input.loanId);
+  if (error) return { ok: false, error: error.message };
+
+  await logEvent(admin, {
+    loanId: input.loanId,
+    actorId: user.id,
+    eventType: "stage_changed",
+    isInternal: true,
+    payload: { old: loan.stage, new: input.stage },
+  });
   return { ok: true };
 }
 
