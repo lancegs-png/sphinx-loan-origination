@@ -1,15 +1,21 @@
 "use client";
 
 import { useState } from "react";
+import dynamic from "next/dynamic";
 import { Chat } from "./chat";
 import { FloatingChat } from "./floating-chat";
 import { LoanData } from "./loan-data";
-import { QuotePanel } from "./quote-panel";
-import { DocumentsPanel } from "./documents-panel";
-import { TemplatesPanel } from "./templates-panel";
-import { PeoplePanel } from "./people-panel";
-import { NotesPanel } from "./notes-panel";
-import { ActivityPanel } from "./activity-panel";
+
+// Heavier, non-landing tab panels are code-split: their JS downloads on first open
+// instead of shipping with the deal page. Loan Info (landing) and Chat (always mounted)
+// stay eager.
+const PanelLoading = () => <div className="p-4 text-sm text-muted">Loading…</div>;
+const QuotePanel = dynamic(() => import("./quote-panel").then((m) => m.QuotePanel), { loading: PanelLoading });
+const DocumentsPanel = dynamic(() => import("./documents-panel").then((m) => m.DocumentsPanel), { loading: PanelLoading });
+const TemplatesPanel = dynamic(() => import("./templates-panel").then((m) => m.TemplatesPanel), { loading: PanelLoading });
+const PeoplePanel = dynamic(() => import("./people-panel").then((m) => m.PeoplePanel), { loading: PanelLoading });
+const NotesPanel = dynamic(() => import("./notes-panel").then((m) => m.NotesPanel), { loading: PanelLoading });
+const ActivityPanel = dynamic(() => import("./activity-panel").then((m) => m.ActivityPanel), { loading: PanelLoading });
 import type { ActivityEvent } from "@/lib/activity";
 import type {
   ChecklistItem,
