@@ -86,11 +86,21 @@ export async function uploadFileToDrive(args: {
   return { id: json.id, webViewLink: json.webViewLink ?? null };
 }
 
-/** Best-effort delete of a Drive file. */
+/**
+ * Best-effort removal of a Drive file: move it to the trash (PATCH trashed=true)
+ * rather than hard-delete. On a Shared Drive the service account is a Content Manager,
+ * which cannot permanently delete (DELETE returns 404), but it can trash. Trashing is
+ * also recoverable, and the file stops showing in the deal folder.
+ */
 export async function deleteDriveFile(fileId: string): Promise<void> {
   const token = await accessToken();
-  await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?supportsAllDrives=true`, {
-    method: "DELETE",
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const res = await fetch(
+    `https://www.googleapis.com/drive/v3/files/${fileId}?supportsAllDrives=true`,
+    {
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ trashed: true }),
+    },
+  );
+  if (!res.ok) throw new Error(`Drive trash ${res.status}: ${(await res.text()).slice(0, 200)}`);
 }
