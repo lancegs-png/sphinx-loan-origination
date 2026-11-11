@@ -1,6 +1,36 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { createServiceRoleClient } from "@/lib/supabase/admin";
 import type { ChecklistItem, LoanDocument } from "@/lib/types";
+
+/**
+ * Create a loan's checklist from its program's checklist on first access — so the
+ * Documents tab is populated (and borrowers can upload) from Intake onward, not only
+ * once the loan reaches Processing. Idempotent: no-ops if the checklist already exists.
+ */
+async function ensureLoanChecklist(loanId: string, programId: string): Promise<void> {
+  const admin = createServiceRoleClient();
+  const { count } = await admin
+    .from("loan_checklist_items")
+    .select("id", { count: "exact", head: true })
+    .eq("loan_id", loanId);
+  if ((count ?? 0) > 0) return;
+
+  const { data: items } = await admin
+    .from("program_checklist_items")
+    .select("document_type_id")
+    .eq("program_id", programId);
+  if (!items?.length) return;
+
+  const rows = items.map((i) => ({
+    loan_id: loanId,
+    document_type_id: i.document_type_id,
+    status: "outstanding",
+  }));
+  await admin
+    .from("loan_checklist_items")
+    .upsert(rows, { onConflict: "loan_id,document_type_id", ignoreDuplicates: true });
+}
 
 /** Load a loan's uploaded documents (newest last), for listing under each checklist item. */
 export async function loadLoanDocuments(
@@ -21,6 +51,10 @@ export async function loadLoanChecklist(
   loanId: string,
   programId: string | null,
 ): Promise<ChecklistItem[]> {
+  // Populate the checklist from the program on first view (idempotent), so documents
+  // are available for upload starting at Intake.
+  if (programId) await ensureLoanChecklist(loanId, programId);
+
   const { data: items } = await client
     .from("loan_checklist_items")
     .select("id,document_type_id,status,notes")

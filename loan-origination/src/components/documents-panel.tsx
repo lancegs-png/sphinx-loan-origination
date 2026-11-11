@@ -112,7 +112,8 @@ export function DocumentsPanel({
     return (
       <div className="flex flex-col gap-3">
         <p className="text-muted">
-          No checklist yet. It&apos;s created from the program checklist when the loan reaches Processing.
+          No document checklist yet — this loan doesn&apos;t have a loan program assigned. The
+          checklist is built from the program&apos;s required documents.
         </p>
         {canGenerate && (
           <button onClick={generate} disabled={busy} className="btn btn-primary self-start">
