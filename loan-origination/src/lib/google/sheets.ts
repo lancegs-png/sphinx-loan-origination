@@ -82,6 +82,25 @@ export async function appendSheetRow(
   );
 }
 
+/**
+ * Write individual cells (A1 ranges) to a sheet via values:batchUpdate with
+ * USER_ENTERED, so "7.75%", 157500 and "2026-11-11" are parsed/formatted like a person
+ * typed them. Used to push field values into the DSCR dashboard's mapped cells.
+ */
+export async function writeCells(
+  sheetId: string,
+  cells: { range: string; value: string | number }[],
+): Promise<void> {
+  if (!cells.length) return;
+  await api(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values:batchUpdate`, {
+    method: "POST",
+    body: JSON.stringify({
+      valueInputOption: "USER_ENTERED",
+      data: cells.map((c) => ({ range: c.range, values: [[c.value]] })),
+    }),
+  });
+}
+
 export function sheetUrl(sheetId: string): string {
   return `https://docs.google.com/spreadsheets/d/${sheetId}`;
 }

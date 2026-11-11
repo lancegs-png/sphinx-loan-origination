@@ -197,10 +197,11 @@ team wants them synced.
 
 # Bound cell addresses (native Google Sheet)
 
-Read from the live native Sheet **`DSCR Deal Dashboard - Template`**
-(id `1u20xar0tDxSsKt6C2PHfhQFUQqEiox4RATrNETrzTz4`, in the Architecture Folder).
-Per-loan copies get their own spreadsheet id; the tab names and cell layout are
-identical. Tabs: `Loan Data`, `Processing Checklist`, `Data Tape`, `DSCR Calc`,
+Bound against **`DSCR Deal Dashboard - Template`** (id
+`1HjfW7tEL_yIug0Ygb8qv3LF0Jgm_kj-S`, in the Architecture Folder). The app copies it
+per deal, forced to a native Google Sheet so the Sheets API can write its cells (see
+`createDealDashboard` in `src/lib/google/drive.ts` and the sync in
+`src/lib/google/dashboard.ts`). The tab names and cell layout are identical in each copy. Tabs: `Loan Data`, `Processing Checklist`, `Data Tape`, `DSCR Calc`,
 `Escrow Template`, `Property Info ` (**trailing space**), `Closing Process`,
 `Closing Package Review`.
 

@@ -54,10 +54,11 @@ export async function createDealFolder(name: string): Promise<string> {
   return json.id;
 }
 
-// The master DSCR Deal Dashboard (a native Google Sheet in the Architecture folder).
-// Each new deal folder gets its own copy. Overridable per environment.
+// The master "DSCR Deal Dashboard - Template" in the Architecture folder. Each new deal
+// folder gets its own copy, forced to a native Google Sheet so the Sheets API can write
+// its cells. Overridable per environment.
 const DSCR_DASHBOARD_TEMPLATE_ID =
-  process.env.GOOGLE_DSCR_DASHBOARD_TEMPLATE_ID || "1u20xar0tDxSsKt6C2PHfhQFUQqEiox4RATrNETrzTz4";
+  process.env.GOOGLE_DSCR_DASHBOARD_TEMPLATE_ID || "1HjfW7tEL_yIug0Ygb8qv3LF0Jgm_kj-S";
 
 /**
  * Copy the DSCR dashboard template into a deal folder under `name`
@@ -71,7 +72,13 @@ export async function createDealDashboard(folderId: string, name: string): Promi
     {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ name, parents: [folderId] }),
+      // Force a native Google Sheet copy (converts the template if it's an .xlsx) so the
+      // Sheets API can write its cells.
+      body: JSON.stringify({
+        name,
+        parents: [folderId],
+        mimeType: "application/vnd.google-apps.spreadsheet",
+      }),
     },
   );
   if (!res.ok) throw new Error(`Dashboard copy ${res.status}: ${(await res.text()).slice(0, 200)}`);

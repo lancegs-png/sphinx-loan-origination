@@ -70,10 +70,18 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         (loan.loan_type ?? "").toUpperCase() === "DSCR"
           ? `Loan Dashboard - ${propertyStreet(loan.property_address)} - ${ref}`.replace(/\s+/g, " ").trim()
           : null;
-      await Promise.all([
+      const [, dashboardId] = await Promise.all([
         admin.from("loans").update({ drive_folder_id: driveFolderId }).eq("id", loanId),
         dashName ? createDealDashboard(driveFolderId, dashName).catch(() => null) : Promise.resolve(null),
       ]);
+      // Track the dashboard sheet so "Sync to Google Sheet" writes into it (best-effort:
+      // tolerated if the sheet_id column isn't present yet).
+      if (dashboardId) {
+        await admin.from("loans").update({ sheet_id: dashboardId }).eq("id", loanId).then(
+          () => {},
+          () => {},
+        );
+      }
     } catch {
       driveFolderId = null; // fall back to Supabase-only
     }
