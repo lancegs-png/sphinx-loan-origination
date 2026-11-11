@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { driveConfigured, createDealFolder, uploadFileToDrive } from "@/lib/google/drive";
 import { loadGuarantorNames } from "@/lib/fields";
+import { resolveDocumentBaseName, indexedName, fileExt } from "@/lib/documents/naming";
 import { logEvent } from "@/lib/audit";
 
 export const runtime = "nodejs";
@@ -67,10 +68,38 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     }
   }
 
+  // Resolve the naming-convention base for this upload's document type (once — all
+  // files in a request share the same checklist item). null => keep original names.
+  let docTypeId: string | null = null;
+  let docTypeName: string | null = null;
+  if (checklistItemId) {
+    const { data: ci } = await admin
+      .from("loan_checklist_items")
+      .select("document_type_id")
+      .eq("id", checklistItemId)
+      .maybeSingle();
+    docTypeId = ci?.document_type_id ?? null;
+    if (docTypeId) {
+      const { data: dt } = await admin.from("document_types").select("name").eq("id", docTypeId).maybeSingle();
+      docTypeName = dt?.name ?? null;
+    }
+  }
+  const baseName = await resolveDocumentBaseName({
+    admin,
+    loanId,
+    loan,
+    documentTypeId: docTypeId,
+    documentTypeName: docTypeName,
+  });
+
   const created: unknown[] = [];
-  for (const file of files) {
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
     const bytes = new Uint8Array(await file.arrayBuffer());
-    const safe = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+    // Rename to the convention (2nd+ file of the same type -> "Appraisal 2 - …"); keep
+    // the original extension. Falls back to the uploaded name when there's no convention.
+    const finalName = baseName ? indexedName(baseName, i, fileExt(file.name)) : file.name;
+    const safe = finalName.replace(/[^a-zA-Z0-9._-]/g, "_");
     const path = `${loanId}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}_${safe}`;
     const contentType = file.type || "application/octet-stream";
 
@@ -83,7 +112,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     let driveLink: string | null = null;
     if (useDrive && driveFolderId) {
       try {
-        const r = await uploadFileToDrive({ folderId: driveFolderId, fileName: file.name, bytes, contentType });
+        const r = await uploadFileToDrive({ folderId: driveFolderId, fileName: finalName, bytes, contentType });
         driveFileId = r.id;
         driveLink = r.webViewLink;
       } catch {
@@ -96,7 +125,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       .insert({
         loan_id: loanId,
         checklist_item_id: checklistItemId,
-        file_name: file.name,
+        file_name: finalName,
         content_type: file.type || null,
         size_bytes: file.size,
         storage_path: path,
@@ -115,7 +144,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       loanId,
       actorId: user.id,
       eventType: "document_uploaded",
-      payload: { file_name: file.name, checklist_item_id: checklistItemId },
+      payload: { file_name: finalName, checklist_item_id: checklistItemId },
     });
   }
 
