@@ -197,13 +197,28 @@ team wants them synced.
 
 # Bound cell addresses (native Google Sheet)
 
-Bound against **`DSCR Deal Dashboard - Template`** (id
-`1HjfW7tEL_yIug0Ygb8qv3LF0Jgm_kj-S`, in the Architecture Folder). The app copies it
-per deal, forced to a native Google Sheet so the Sheets API can write its cells (see
-`createDealDashboard` in `src/lib/google/drive.ts` and the sync in
-`src/lib/google/dashboard.ts`). The tab names and cell layout are identical in each copy. Tabs: `Loan Data`, `Processing Checklist`, `Data Tape`, `DSCR Calc`,
-`Escrow Template`, `Property Info ` (**trailing space**), `Closing Process`,
-`Closing Package Review`.
+> ⚠️ **The cell addresses in the sections above are the OLD template layout.** The live
+> template was replaced (2026-11) with a restructured, consolidated
+> **`DSCR Deal Dashboard - Template`** (id `1u20xar0tDxSsKt6C2PHfhQFUQqEiox4RATrNETrzTz4`).
+> The **authoritative map is now in code** — `LOAN_DATA_CELLS` and `DATA_TAPE_CELLS` in
+> `src/lib/google/dashboard.ts` — not this doc. The app copies the template per deal
+> (forced native so the Sheets API can write it; see `createDealDashboard` in
+> `src/lib/google/drive.ts`) and pushes field values one-way (app → dashboard).
+
+**What the new sync writes** (only non-formula input cells; formulas like Loan Amount
+`=LTV×As-Is`, DSCR, PITI, Net Wire are never written and recompute from the inputs):
+
+- **`Loan Data` tab** — Loan Information (B3–B14), Property Information (B17–B32,
+  including the new Occupancy, Purchase Price and Original Purchase Price), Trade
+  Information (E2–E7), Borrower Information (E10–E21), Title/Insurance contacts
+  (E24–E31), and the Closing input cells Underwriting/Legal fee + Prepaid Interest
+  (H16–H18) and Closing/Disbursement/First-Payment dates (J11–J13).
+- **`Data Tape` tab (row 2)** — only the columns Loan Data doesn't already feed by
+  formula: Channel, Lien Position, CLTV, DTI, Doc Type (+ detail), Fixed Period,
+  Citizenship, Foreign National / ITIN flags, MERS MIN, ULI, Day Count. Every other
+  tape column is a formula pulling from Loan Data.
+
+Tabs not synced: `Property Info `, `Closing Process`, `Closing Package Review`.
 
 > ⚠️ **Tab name gotcha:** the property tab is literally `Property Info ` with a
 > trailing space — A1 ranges must quote it exactly: `'Property Info '!B2`.

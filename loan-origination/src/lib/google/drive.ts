@@ -58,7 +58,7 @@ export async function createDealFolder(name: string): Promise<string> {
 // folder gets its own copy, forced to a native Google Sheet so the Sheets API can write
 // its cells. Overridable per environment.
 const DSCR_DASHBOARD_TEMPLATE_ID =
-  process.env.GOOGLE_DSCR_DASHBOARD_TEMPLATE_ID || "1HjfW7tEL_yIug0Ygb8qv3LF0Jgm_kj-S";
+  process.env.GOOGLE_DSCR_DASHBOARD_TEMPLATE_ID || "1u20xar0tDxSsKt6C2PHfhQFUQqEiox4RATrNETrzTz4";
 
 /**
  * Copy the DSCR dashboard template into a deal folder under `name`

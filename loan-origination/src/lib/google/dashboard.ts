@@ -6,59 +6,99 @@ import { createDealDashboard } from "./drive";
 import { writeCells, sheetUrl } from "./sheets";
 
 /**
- * DSCR dashboard "Loan Data" tab — value cell ↔ field_key, from the bound cell map
- * (docs/google-sync/dscr-dashboard-cell-map.md). ONLY writable (↔ / →) cells are
- * listed; formula cells (B28 DSCR, E17–E21 monthly, Full Address) are intentionally
- * omitted so the dashboard's own formulas are never clobbered. Loan Number (B2) comes
- * from the loans row, not a field value. Repeat-group keys use the loadFieldValues form
- * (idx 1 bare, idx 2 as `key#2`).
+ * DSCR dashboard field map (app → sheet, one-way push). Bound to the "DSCR Deal Dashboard
+ * - Template" — see docs/google-sync/dscr-dashboard-cell-map.md.
+ *
+ * Two tabs carry data: `Loan Data` (the human view) and `Data Tape` (the investor tape,
+ * row 2). Most Data Tape columns are formulas pulling from Loan Data, so they fill in
+ * automatically — only the tape's own input columns (the fields Loan Data doesn't have)
+ * are written here. Formula cells (B5 Loan Amount, DSCR / PITI / Net Wire, every Data Tape
+ * `=` column) are intentionally omitted so the dashboard's own math is never clobbered.
+ *
+ * Keys use the loadFieldValues form (idx 1 bare, idx 2 as `key#2`). B2 Loan Number comes
+ * from the loans row, not a field value.
  */
 const LOAN_DATA_CELLS: { cell: string; key: string }[] = [
-  { cell: "E2", key: "investor_name" },
+  // Loan Information
   { cell: "B3", key: "application_date" },
   { cell: "B4", key: "product_type" },
-  { cell: "E4", key: "lock_price" },
-  { cell: "B5", key: "loan_amount" },
-  { cell: "E5", key: "servicer_name" },
   { cell: "B6", key: "loan_purpose" },
-  { cell: "E6", key: "servicing_number" },
   { cell: "B7", key: "interest_rate" },
   { cell: "B8", key: "prepay_term_months" },
   { cell: "B9", key: "prepay_type" },
   { cell: "B10", key: "ltv" },
   { cell: "B11", key: "origination_fee_pct" },
   { cell: "B12", key: "loan_term_months" },
-  { cell: "B13", key: "as_is_value" },
+  { cell: "B13", key: "reserve_months" },
   { cell: "B14", key: "io_months" },
+  // Property Information
+  { cell: "B17", key: "property_address" },
   { cell: "B18", key: "property_street" },
   { cell: "B19", key: "property_city" },
   { cell: "B20", key: "property_state" },
   { cell: "B21", key: "property_zip" },
   { cell: "B22", key: "property_type" },
   { cell: "B23", key: "unit_count" },
-  { cell: "B24", key: "monthly_rent" },
-  { cell: "B25", key: "annual_taxes" },
-  { cell: "B26", key: "annual_insurance" },
-  { cell: "B27", key: "annual_hoa" },
-  { cell: "B29", key: "payoff_amount" },
-  { cell: "B32", key: "borrower_entity" },
-  { cell: "B33", key: "entity_ein" },
-  { cell: "B34", key: "guarantor_first_name" },
-  { cell: "B35", key: "guarantor_last_name" },
-  { cell: "B36", key: "guarantor_phone" },
-  { cell: "B37", key: "guarantor_email" },
-  { cell: "B38", key: "guarantor_fico" },
-  { cell: "B39", key: "guarantor_first_name#2" },
-  { cell: "B40", key: "guarantor_last_name#2" },
-  { cell: "B41", key: "guarantor_phone#2" },
-  { cell: "B42", key: "guarantor_email#2" },
-  { cell: "B43", key: "guarantor_fico#2" },
-  { cell: "E32", key: "title_contact_name" },
-  { cell: "E33", key: "title_contact_email" },
-  { cell: "E34", key: "title_contact_phone" },
-  { cell: "E37", key: "insurance_contact_name" },
-  { cell: "E38", key: "insurance_contact_email" },
-  { cell: "E39", key: "insurance_contact_phone" },
+  { cell: "B24", key: "occupancy" },
+  { cell: "B25", key: "as_is_value" },
+  { cell: "B26", key: "purchase_price" },
+  { cell: "B27", key: "original_purchase_price" },
+  { cell: "B28", key: "monthly_rent" },
+  { cell: "B29", key: "annual_taxes" },
+  { cell: "B30", key: "annual_insurance" },
+  { cell: "B31", key: "annual_hoa" },
+  { cell: "B32", key: "payoff_amount" },
+  // Trade Information
+  { cell: "E2", key: "investor_name" },
+  { cell: "E3", key: "lock_date" },
+  { cell: "E4", key: "lock_expiration_date" },
+  { cell: "E5", key: "lock_price" },
+  { cell: "E6", key: "servicer_name" },
+  { cell: "E7", key: "servicing_number" },
+  // Borrower Information
+  { cell: "E10", key: "borrower_entity" },
+  { cell: "E11", key: "entity_ein" },
+  { cell: "E12", key: "guarantor_first_name" },
+  { cell: "E13", key: "guarantor_last_name" },
+  { cell: "E14", key: "guarantor_phone" },
+  { cell: "E15", key: "guarantor_email" },
+  { cell: "E16", key: "guarantor_fico" },
+  { cell: "E17", key: "guarantor_first_name#2" },
+  { cell: "E18", key: "guarantor_last_name#2" },
+  { cell: "E19", key: "guarantor_phone#2" },
+  { cell: "E20", key: "guarantor_email#2" },
+  { cell: "E21", key: "guarantor_fico#2" },
+  // Title / Insurance contacts
+  { cell: "E24", key: "title_contact_name" },
+  { cell: "E25", key: "title_contact_email" },
+  { cell: "E26", key: "title_contact_phone" },
+  { cell: "E29", key: "insurance_contact_name" },
+  { cell: "E30", key: "insurance_contact_email" },
+  { cell: "E31", key: "insurance_contact_phone" },
+  // Closing Calculations — the input cells only (the rest are formulas)
+  { cell: "H16", key: "underwriting_fee" },
+  { cell: "H17", key: "legal_fee" },
+  { cell: "H18", key: "prepaid_interest" },
+  { cell: "J11", key: "closing_date" },
+  { cell: "J12", key: "disbursement_date" },
+  { cell: "J13", key: "first_payment_date" },
+];
+
+// Data Tape (row 2) — ONLY the columns Loan Data doesn't already feed by formula.
+const DATA_TAPE_CELLS: { cell: string; key: string }[] = [
+  { cell: "C2", key: "channel" },
+  { cell: "E2", key: "lien_position" },
+  { cell: "W2", key: "cltv" },
+  { cell: "Y2", key: "dti" },
+  { cell: "AB2", key: "doc_type" },
+  { cell: "AC2", key: "doc_type_detail" },
+  { cell: "AK2", key: "fixed_period_months" },
+  { cell: "AO2", key: "guarantor_citizenship" },
+  { cell: "AP2", key: "foreign_national_flag" },
+  { cell: "AQ2", key: "itin_flag" },
+  { cell: "BG2", key: "mers_min" },
+  { cell: "BH2", key: "uli" },
+  { cell: "BI2", key: "day_count" },
 ];
 
 /** Format a field value for USER_ENTERED entry, by field type. null => skip (don't clear). */
@@ -77,10 +117,10 @@ function cellValue(type: string | undefined, raw: unknown): string | number | nu
 }
 
 /**
- * Push a loan's field values into its DSCR dashboard's Loan Data cells (one-way:
- * app → dashboard). Creates the per-deal dashboard from the template on first sync
- * (stored on loans.sheet_id) and writes only non-empty values, so the dashboard's own
- * formulas and any dashboard-only cells are left intact. Returns the sheet url + count.
+ * Push a loan's field values into its DSCR dashboard (one-way: app → dashboard), across
+ * the Loan Data and Data Tape tabs. Creates the per-deal dashboard from the template on
+ * first sync (stored on loans.sheet_id) and writes only non-empty, non-formula cells, so
+ * the dashboard's own formulas recompute from the inputs. Returns the sheet url + count.
  */
 export async function syncLoanToDashboard(loanId: string): Promise<{ url: string; wrote: number }> {
   const admin = createServiceRoleClient();
@@ -116,11 +156,17 @@ export async function syncLoanToDashboard(loanId: string): Promise<{ url: string
 
   const cells: { range: string; value: string | number }[] = [];
   if (ref) cells.push({ range: "'Loan Data'!B2", value: String(ref) });
-  for (const { cell, key } of LOAN_DATA_CELLS) {
-    const baseKey = key.includes("#") ? key.slice(0, key.indexOf("#")) : key;
-    const out = cellValue(typeByKey.get(baseKey), fv[key]?.current);
-    if (out !== null) cells.push({ range: `'Loan Data'!${cell}`, value: out });
-  }
+  // Write every mapped cell — the app's value, or blank to clear the template's sample
+  // data for fields this loan hasn't filled (the app is the source of truth for the push).
+  const add = (tab: string, map: { cell: string; key: string }[]) => {
+    for (const { cell, key } of map) {
+      const baseKey = key.includes("#") ? key.slice(0, key.indexOf("#")) : key;
+      const out = cellValue(typeByKey.get(baseKey), fv[key]?.current);
+      cells.push({ range: `'${tab}'!${cell}`, value: out ?? "" });
+    }
+  };
+  add("Loan Data", LOAN_DATA_CELLS);
+  add("Data Tape", DATA_TAPE_CELLS);
 
   await writeCells(sheetId, cells);
   return { url: sheetUrl(sheetId), wrote: cells.length };
