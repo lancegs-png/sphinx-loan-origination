@@ -31,6 +31,11 @@ export function fileExt(name: string): string {
   return m ? m[0] : "";
 }
 
+/** The street portion of a property address (the first comma-separated segment). */
+export function propertyStreet(address: string | null | undefined): string {
+  return (address ?? "").split(",")[0].trim();
+}
+
 /**
  * Resolve the convention base name (no extension, no multi-file index) for a document,
  * or null to keep the original file name (no config, or an unassigned upload with no type).
@@ -53,7 +58,7 @@ export async function resolveDocumentBaseName(opts: {
 
   const loanNo = opts.loan.loan_number ?? opts.loan.opportunity_number ?? "";
   // {Property} renders as the street only (first comma-segment), per the chosen convention.
-  const street = (opts.loan.property_address ?? "").split(",")[0].trim();
+  const street = propertyStreet(opts.loan.property_address);
 
   const { data: fv } = await opts.admin
     .from("loan_field_values")

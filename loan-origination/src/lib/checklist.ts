@@ -6,13 +6,24 @@ import type { ChecklistItem, LoanDocument } from "@/lib/types";
 /**
  * Materialize a loan's checklist from its program's checklist on access — so the
  * Documents tab is populated (and borrowers can upload) from Intake onward, not only
- * once the loan reaches Processing. Additive and idempotent: it upserts the full program
- * set with ignoreDuplicates, so existing rows (and their statuses/notes) are untouched
- * while any newly-configured document types are added to loans whose checklist was
- * materialized before those items existed.
+ * once the loan reaches Processing. Additive and idempotent: when the loan is missing
+ * items (e.g. a document type was added after its checklist was first built), it upserts
+ * the program set with ignoreDuplicates — existing rows' statuses/notes are untouched.
+ * The common case (loan already has every item) short-circuits on a count compare, so
+ * the hot read path does no write.
  */
 async function ensureLoanChecklist(loanId: string, programId: string): Promise<void> {
   const admin = createServiceRoleClient();
+  const [{ count: loanCount }, { count: programCount }] = await Promise.all([
+    admin.from("loan_checklist_items").select("id", { count: "exact", head: true }).eq("loan_id", loanId),
+    admin
+      .from("program_checklist_items")
+      .select("document_type_id", { count: "exact", head: true })
+      .eq("program_id", programId),
+  ]);
+  if (!programCount) return;
+  if ((loanCount ?? 0) >= programCount) return; // already materialized — nothing missing
+
   const { data: items } = await admin
     .from("program_checklist_items")
     .select("document_type_id")

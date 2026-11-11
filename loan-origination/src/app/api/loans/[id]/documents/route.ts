@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { driveConfigured, createDealFolder, createDealDashboard, uploadFileToDrive } from "@/lib/google/drive";
 import { loadGuarantorNames } from "@/lib/fields";
-import { resolveDocumentBaseName, indexedName, fileExt } from "@/lib/documents/naming";
+import { resolveDocumentBaseName, indexedName, fileExt, propertyStreet } from "@/lib/documents/naming";
 import { logEvent } from "@/lib/audit";
 
 export const runtime = "nodejs";
@@ -62,19 +62,18 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           .replace(/\s+/g, " ")
           .trim() || String(ref);
       driveFolderId = await createDealFolder(label);
-      await admin.from("loans").update({ drive_folder_id: driveFolderId }).eq("id", loanId);
 
-      // Seed the deal's dashboard from the template (DSCR only for now — it's the only
-      // template). Named "Loan Dashboard - <street> - <loan #>". Best-effort.
-      if ((loan.loan_type ?? "").toUpperCase() === "DSCR") {
-        try {
-          const street = (loan.property_address ?? "").split(",")[0].trim();
-          const dashName = `Loan Dashboard - ${street} - ${ref}`.replace(/\s+/g, " ").trim();
-          await createDealDashboard(driveFolderId, dashName);
-        } catch {
-          /* best-effort: the folder still works without the dashboard */
-        }
-      }
+      // Persist the folder id and seed the deal's dashboard in parallel (independent work).
+      // The dashboard is DSCR-only for now (the only template), named "Loan Dashboard -
+      // <street> - <loan #>"; its copy is best-effort — the folder works without it.
+      const dashName =
+        (loan.loan_type ?? "").toUpperCase() === "DSCR"
+          ? `Loan Dashboard - ${propertyStreet(loan.property_address)} - ${ref}`.replace(/\s+/g, " ").trim()
+          : null;
+      await Promise.all([
+        admin.from("loans").update({ drive_folder_id: driveFolderId }).eq("id", loanId),
+        dashName ? createDealDashboard(driveFolderId, dashName).catch(() => null) : Promise.resolve(null),
+      ]);
     } catch {
       driveFolderId = null; // fall back to Supabase-only
     }

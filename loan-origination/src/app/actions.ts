@@ -597,17 +597,14 @@ export async function setLoanStage(input: {
   } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: "Not signed in." };
 
-  const { data: me } = await supabase
-    .from("profiles")
-    .select("lender_user_type")
-    .eq("id", user.id)
-    .single();
+  // Role check and current-stage read are independent — run them together. The loan
+  // read is RLS-gated to loans the caller can access.
+  const [{ data: me }, { data: loan }] = await Promise.all([
+    supabase.from("profiles").select("lender_user_type").eq("id", user.id).single(),
+    supabase.from("loans").select("stage").eq("id", input.loanId).single(),
+  ]);
   if (!me?.lender_user_type) return { ok: false, error: "Lending team only." };
-
   if (!STAGES.some((s) => s.key === input.stage)) return { ok: false, error: "Unknown stage." };
-
-  // RLS limits this read to loans the caller can access.
-  const { data: loan } = await supabase.from("loans").select("stage").eq("id", input.loanId).single();
   if (!loan) return { ok: false, error: "No access to this loan." };
   if (loan.stage === input.stage) return { ok: true };
 

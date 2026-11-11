@@ -61,11 +61,10 @@ const DSCR_DASHBOARD_TEMPLATE_ID =
 
 /**
  * Copy the DSCR dashboard template into a deal folder under `name`
- * ("Loan Dashboard - <street> - <loan #>"). Returns the new sheet's id, or null if
- * no template is configured. Best-effort: the caller shouldn't fail if this throws.
+ * ("Loan Dashboard - <street> - <loan #>"). Returns the new sheet's id. Best-effort:
+ * the caller shouldn't fail the upload if this throws.
  */
-export async function createDealDashboard(folderId: string, name: string): Promise<string | null> {
-  if (!DSCR_DASHBOARD_TEMPLATE_ID) return null;
+export async function createDealDashboard(folderId: string, name: string): Promise<string> {
   const token = await accessToken();
   const res = await fetch(
     `https://www.googleapis.com/drive/v3/files/${DSCR_DASHBOARD_TEMPLATE_ID}/copy?supportsAllDrives=true&fields=id`,
