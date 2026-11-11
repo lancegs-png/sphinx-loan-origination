@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { saveLoanField, setLoanFieldLock, syncLoanToSheet } from "@/app/actions";
 import type { FieldDef, FieldValues, Loan } from "@/lib/types";
 
@@ -29,6 +29,27 @@ const PRIMARY_LOAN: { key: string; label: string }[] = [
   { key: "io_months", label: "Interest Only Months" },
 ];
 const PRIMARY_LOAN_KEYS = new Set(PRIMARY_LOAN.map((p) => p.key));
+
+// Verifiable fields shown as a single value (current = verified ?? initial; edits write
+// to verified) instead of the Initial/Verified pair — like the property fields. Populated
+// with the intake/initial value, then shows the verified value once it's updated.
+const SINGLE_VALUE_KEYS = new Set([
+  "loan_purpose",
+  "interest_rate",
+  "ltv",
+  "origination_fee_pct",
+  "borrower_entity",
+  "entity_ein",
+  "entity_state",
+  "guarantor_first_name",
+  "guarantor_last_name",
+  "guarantor_fico",
+  "guarantor_citizenship",
+  "guarantor_ownership_pct",
+]);
+
+// Only these fields get the lock / unlock control.
+const LOCKABLE_KEYS = new Set(["interest_rate", "ltv", "origination_fee_pct"]);
 
 const str = (v: unknown) => (v == null ? "" : String(v));
 
@@ -98,7 +119,7 @@ export function LoanData({
         cell={values[def.key]}
         canEdit={canEdit}
         isLender={isLender}
-        singleValue={def.section === "property"}
+        singleValue={def.section === "property" || SINGLE_VALUE_KEYS.has(def.key)}
         onSave={(kind, v) => save(def, kind, v)}
         onLock={(locked) => toggleLock(def, locked)}
       />
@@ -203,7 +224,19 @@ function FieldRow({
   const locked = cell?.locked ?? false;
   const calculated = def.source === "calculated";
   const current = str(cell?.current);
-  const showLock = canEdit && isLender && def.verifiable;
+  const showLock = canEdit && isLender && def.verifiable && LOCKABLE_KEYS.has(def.key);
+
+  // Term sheet / commitment letter dates are auto-stamped when the document is
+  // generated (read-only here) and reflect the most recent generation.
+  if (def.key === "term_sheet_date" || def.key === "commitment_date") {
+    return (
+      <Row label={def.label} badge="auto">
+        <span className="block truncate px-2 py-1.5 text-sm text-fg">
+          {current ? fmtDisplay(def, current) : "—"}
+        </span>
+      </Row>
+    );
+  }
 
   // Calculated or read-only viewer: label | value.
   if (calculated || !canEdit) {
@@ -300,8 +333,35 @@ function CellInput({
   onCommit: (v: string) => void;
 }) {
   const [value, setValue] = useState(base);
+  const taRef = useRef<HTMLTextAreaElement>(null);
   const cls =
     "w-full bg-transparent px-2 py-1.5 text-sm text-fg outline-none focus:bg-gold/5 disabled:opacity-50";
+
+  // Auto-grow a long-text field so the full entry stays visible.
+  useEffect(() => {
+    const el = taRef.current;
+    if (el) {
+      el.style.height = "auto";
+      el.style.height = `${el.scrollHeight}px`;
+    }
+  }, [value]);
+
+  if (def.key === "loan_request_summary") {
+    return (
+      <textarea
+        ref={taRef}
+        value={value}
+        disabled={disabled}
+        placeholder={placeholder}
+        rows={1}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={() => {
+          if (value !== base) onCommit(value);
+        }}
+        className={`${cls} resize-none overflow-hidden leading-snug`}
+      />
+    );
+  }
 
   if (def.type === "select") {
     return (

@@ -361,6 +361,15 @@ export async function generateTermSheet(loanId: string): Promise<{ ok: boolean; 
     "then sign below to accept and begin the process. Final terms remain subject to underwriting and approval.";
 
   const admin = createServiceRoleClient();
+
+  // Stamp the term sheet date to today; updates on each (re)generation.
+  await upsertFieldValue(admin, {
+    loanId,
+    key: "term_sheet_date",
+    valueKind: "initial",
+    value: new Date().toISOString().slice(0, 10),
+  });
+
   const { error } = await admin.from("messages").insert({
     loan_id: loanId,
     sender_kind: "ai",

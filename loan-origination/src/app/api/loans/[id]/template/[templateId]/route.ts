@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
-import { loadFieldValues } from "@/lib/fields";
+import { loadFieldValues, upsertFieldValue } from "@/lib/fields";
 import { loadCompanyConfig } from "@/lib/company";
 import { buildDataTapeCsv } from "@/lib/templates/data-tape";
 import { buildTemplateData, fillDocx } from "@/lib/templates/docx";
@@ -54,6 +54,17 @@ export async function GET(
       format: def.id === "data_tape" ? "csv" : asPdf ? "pdf" : "docx",
     },
   });
+
+  // Stamp the generation date on the LOI / commitment-letter date field (updates on
+  // each generation) BEFORE the template is filled, so the document shows that date.
+  if (def.id.includes("loi") || def.id.includes("commitment")) {
+    await upsertFieldValue(createServiceRoleClient(), {
+      loanId: id,
+      key: def.id.includes("commitment") ? "commitment_date" : "term_sheet_date",
+      valueKind: "initial",
+      value: new Date().toISOString().slice(0, 10),
+    });
+  }
 
   // Data tape: one row per property, exact Data Tape Map columns, blanks stay blank.
   if (def.id === "data_tape") {
