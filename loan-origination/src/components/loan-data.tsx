@@ -13,6 +13,7 @@ const SECTION_LABEL: Record<string, string> = {
   trade: "Trade Info",
   borrower: "Borrower Info",
   contact: "Contacts",
+  dscr_calc: "DSCR Calculation",
   closing: "Closing Calculations",
   data_tape: "Data Tape Fields",
   additional: "Additional Info",
@@ -204,6 +205,7 @@ export function LoanData({
           {sectionCard("trade")}
           {sectionCard("borrower")}
           {sectionCard("contact")}
+          {sectionCard("dscr_calc")}
           {sectionCard("closing")}
         </div>
       </div>
