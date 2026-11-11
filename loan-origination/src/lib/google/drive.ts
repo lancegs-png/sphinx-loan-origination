@@ -54,6 +54,32 @@ export async function createDealFolder(name: string): Promise<string> {
   return json.id;
 }
 
+// The master DSCR Deal Dashboard (a native Google Sheet in the Architecture folder).
+// Each new deal folder gets its own copy. Overridable per environment.
+const DSCR_DASHBOARD_TEMPLATE_ID =
+  process.env.GOOGLE_DSCR_DASHBOARD_TEMPLATE_ID || "1u20xar0tDxSsKt6C2PHfhQFUQqEiox4RATrNETrzTz4";
+
+/**
+ * Copy the DSCR dashboard template into a deal folder under `name`
+ * ("Loan Dashboard - <street> - <loan #>"). Returns the new sheet's id, or null if
+ * no template is configured. Best-effort: the caller shouldn't fail if this throws.
+ */
+export async function createDealDashboard(folderId: string, name: string): Promise<string | null> {
+  if (!DSCR_DASHBOARD_TEMPLATE_ID) return null;
+  const token = await accessToken();
+  const res = await fetch(
+    `https://www.googleapis.com/drive/v3/files/${DSCR_DASHBOARD_TEMPLATE_ID}/copy?supportsAllDrives=true&fields=id`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ name, parents: [folderId] }),
+    },
+  );
+  if (!res.ok) throw new Error(`Dashboard copy ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  const json = (await res.json()) as { id: string };
+  return json.id;
+}
+
 /** Upload a file into a Drive folder; returns its id and shareable web link. */
 export async function uploadFileToDrive(args: {
   folderId: string;
