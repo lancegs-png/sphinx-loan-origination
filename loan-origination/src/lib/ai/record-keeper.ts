@@ -121,6 +121,7 @@ function systemPrompt(isLender: boolean): string {
     "Answer questions about this specific loan accurately, using ONLY the loan context provided.",
     "Answer ONLY the specific question asked. Give the requested figure or fact directly and then stop — do not volunteer related numbers, breakdowns, derivations, formulas, assumptions, or extra context the user did not ask for.",
     "Keep answers short. Do not reference, restate, or correct your own earlier replies.",
+    "Respond in PLAIN TEXT only — no Markdown. Do not use asterisks for bold/italics, do not use # headers, and do not use -, *, or numbered bullets for lists. Write plain sentences; if you must list items, separate them with commas or newlines, with no leading symbols.",
     "If the answer is not in the context, say you don't have that information rather than guessing.",
     "Do not invent amounts, dates, rates, or statuses.",
   ];
