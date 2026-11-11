@@ -52,6 +52,13 @@ const SINGLE_VALUE_KEYS = new Set([
   "guarantor_fico",
   "guarantor_citizenship",
   "guarantor_ownership_pct",
+  "legal_description",
+  "insurance_coverage",
+  "lease_start_date",
+  "lease_end_date",
+  "arv",
+  "rehab_budget",
+  "experience_property_count",
 ]);
 
 // Only these fields get the lock / unlock control.
