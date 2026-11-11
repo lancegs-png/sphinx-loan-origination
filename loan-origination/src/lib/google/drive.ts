@@ -40,7 +40,7 @@ async function accessToken(): Promise<string> {
 export async function createDealFolder(name: string): Promise<string> {
   const parent = process.env.GOOGLE_DRIVE_PARENT_FOLDER_ID;
   const token = await accessToken();
-  const res = await fetch("https://www.googleapis.com/drive/v3/files?fields=id", {
+  const res = await fetch("https://www.googleapis.com/drive/v3/files?fields=id&supportsAllDrives=true", {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -74,7 +74,7 @@ export async function uploadFileToDrive(args: {
   const body = new Blob([head, args.bytes as BlobPart, tail]);
 
   const res = await fetch(
-    "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink",
+    "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink&supportsAllDrives=true",
     {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": `multipart/related; boundary=${boundary}` },
@@ -89,7 +89,7 @@ export async function uploadFileToDrive(args: {
 /** Best-effort delete of a Drive file. */
 export async function deleteDriveFile(fileId: string): Promise<void> {
   const token = await accessToken();
-  await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
+  await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?supportsAllDrives=true`, {
     method: "DELETE",
     headers: { Authorization: `Bearer ${token}` },
   });

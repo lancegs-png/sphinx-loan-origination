@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { createLoanChecklist, setChecklistItemStatus } from "@/app/actions";
 import type { ChecklistItem, LoanDocument } from "@/lib/types";
 
@@ -124,8 +124,11 @@ export function DocumentsPanel({
     );
   }
 
-  const categories = [...new Set(rows.map((r) => r.category ?? "Other"))];
-  const showCategory = categories.length > 1;
+  // Group by who provides the doc: borrower-provided vs lender-ordered (the assignee).
+  const GROUPS: { key: string; label: string; match: (r: ChecklistItem) => boolean }[] = [
+    { key: "borrower", label: "Borrower Provided", match: (r) => r.assignee !== "lending_team" },
+    { key: "lender", label: "Lender Ordered", match: (r) => r.assignee === "lending_team" },
+  ];
   const total = rows.length;
   const approved = rows.filter((r) => r.status === "approved").length;
 
@@ -147,17 +150,17 @@ export function DocumentsPanel({
             <div className="border-l border-line px-3 py-1.5">Notes</div>
           </div>
 
-          <div className="divide-y divide-line">
-            {categories.map((cat) => (
-              <Fragment key={cat}>
-                {showCategory && (
-                  <div className="bg-surface-2/60 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted">
-                    {cat}
+          <div className="flex flex-col gap-4">
+            {GROUPS.map((g) => {
+              const groupRows = rows.filter(g.match);
+              if (groupRows.length === 0) return null;
+              return (
+                <div key={g.key}>
+                  <div className="border-y border-line bg-surface-2 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-fg">
+                    {g.label}
                   </div>
-                )}
-                {rows
-                  .filter((r) => (r.category ?? "Other") === cat)
-                  .map((r) => {
+                  <div className="divide-y divide-line">
+                    {groupRows.map((r) => {
                     const files = docsByItem.get(r.id) ?? [];
                     return (
                       <div
@@ -284,8 +287,10 @@ export function DocumentsPanel({
                       </div>
                     );
                   })}
-              </Fragment>
-            ))}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>

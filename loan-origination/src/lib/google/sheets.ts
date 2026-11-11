@@ -50,7 +50,7 @@ export async function createLoanSheet(title: string, driveFolderId?: string | nu
   const id = created.spreadsheetId as string;
   if (driveFolderId) {
     await api(
-      `https://www.googleapis.com/drive/v3/files/${id}?addParents=${driveFolderId}&fields=id,parents`,
+      `https://www.googleapis.com/drive/v3/files/${id}?addParents=${driveFolderId}&fields=id,parents&supportsAllDrives=true`,
       { method: "PATCH", body: "{}" },
     );
   }
