@@ -180,7 +180,7 @@ export function LoanData({
   function cardShell(key: string, title: string, children: ReactNode) {
     return (
       <section key={key} className="card overflow-hidden">
-        <h3 className="border-b border-line bg-surface-2 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-muted">
+        <h3 className="border-b border-[#bfdcf0] bg-[#e6f2fb] px-3 py-2 text-xs font-semibold uppercase tracking-wide text-[#15618f]">
           {title}
         </h3>
         <div className="divide-y divide-line">{children}</div>
@@ -222,6 +222,8 @@ export function LoanData({
         SECTION_LABEL[section],
         <>
           {dates.map((d) => row(d))}
+          {/* Separate the dates from the Net Wire ledger below. */}
+          <div aria-hidden className="h-4 bg-surface-2" />
           {loanAmountDef && row(loanAmountDef)}
           {amounts.map((d) => row(d))}
           {netWire && (
@@ -268,25 +270,25 @@ export function LoanData({
       : null;
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-6">
       {!canEdit && <p className="text-xs text-muted">Read-only</p>}
       {canEdit && <SheetSync loanId={loan.id} />}
-      <div className="grid items-start gap-3 lg:grid-cols-2">
-        <div className="flex flex-col gap-3">
+      <div className="grid items-start gap-6 lg:grid-cols-2">
+        <div className="flex flex-col gap-6">
           {sectionCard("loan")}
           {sectionCard("property")}
           {sectionCard("dscr_calc")}
         </div>
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-6">
           {sectionCard("trade")}
           {sectionCard("borrower")}
           {sectionCard("contact")}
           {sectionCard("closing")}
         </div>
       </div>
-      <div className="grid items-start gap-3 lg:grid-cols-2">
-        <div className="flex flex-col gap-3">{sectionCard("additional")}</div>
-        <div className="flex flex-col gap-3">
+      <div className="grid items-start gap-6 lg:grid-cols-2">
+        <div className="flex flex-col gap-6">{sectionCard("additional")}</div>
+        <div className="flex flex-col gap-6">
           {sectionCard("data_tape")}
           {initialCard}
         </div>
