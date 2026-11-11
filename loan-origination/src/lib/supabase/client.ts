@@ -71,8 +71,7 @@ function sanitizingFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
       const c = s.replace(/[\u0000-\u001f\u007f-\u009f]/g, '');
       if (c !== s) {
         dirty = true;
-        if (typeof console !== 'undefined')
-          console.warn('[supabase] stripped control char from header', k, 'rawLen', s.length, 'raw', JSON.stringify(s));
+        if (typeof console !== 'undefined') console.warn('[supabase] stripped control char from header', k);
       }
       return [k, c] as [string, string];
     });
