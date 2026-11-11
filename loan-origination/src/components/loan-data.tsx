@@ -4,31 +4,37 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { saveLoanField, setLoanFieldLock, syncLoanToSheet } from "@/app/actions";
 import type { FieldDef, FieldValues, Loan } from "@/lib/types";
 
-// Column placement is set explicitly in the layout below. Contacts live on the People tab.
+// Section cards, labelled and ordered to mirror the DSCR dashboard's Loan Data tab.
+// Data Tape Fields holds the columns the tape adds on top of Loan Data; Additional Info
+// holds everything the dashboard doesn't track (operational + RTL fields).
 const SECTION_LABEL: Record<string, string> = {
+  loan: "Loan Info",
   property: "Property Info",
-  borrower: "Borrower Info",
-  guarantor: "Guarantor",
   trade: "Trade Info",
+  borrower: "Borrower Info",
+  contact: "Contacts",
+  closing: "Closing Calculations",
+  data_tape: "Data Tape Fields",
+  additional: "Additional Info",
 };
 
-// The curated Loan Info card: these keys (with short labels), in this order. Everything
-// else in the loan section drops to the "Additional Loan Info" card below it.
-const PRIMARY_LOAN: { key: string; label: string }[] = [
-  { key: "application_date", label: "Start Date" },
-  { key: "product_type", label: "Product Type" },
-  { key: "loan_amount", label: "Loan Amount" },
-  { key: "loan_purpose", label: "Loan Purpose" },
-  { key: "interest_rate", label: "Rate" },
-  { key: "prepay_term_months", label: "Prepay Term" },
-  { key: "prepay_type", label: "Prepay Type" },
-  { key: "ltv", label: "Leverage" },
-  { key: "origination_fee_pct", label: "Origination" },
-  { key: "loan_term_months", label: "Loan Term" },
-  { key: "as_is_value", label: "Appraised Value" },
-  { key: "io_months", label: "Interest Only Months" },
-];
-const PRIMARY_LOAN_KEYS = new Set(PRIMARY_LOAN.map((p) => p.key));
+// Short display labels matching the dashboard's wording (overrides the stored field label).
+const DASHBOARD_LABEL: Record<string, string> = {
+  application_date: "Start Date",
+  product_type: "Product Type",
+  loan_amount: "Loan Amount",
+  loan_purpose: "Loan Purpose",
+  interest_rate: "Rate",
+  prepay_term_months: "Prepay Term",
+  prepay_type: "Prepay Type",
+  ltv: "LTV",
+  origination_fee_pct: "Origination",
+  loan_term_months: "Loan Term",
+  reserve_months: "Reserve Months",
+  io_months: "Interest Only Months",
+  as_is_value: "As-Is Value",
+  guarantor_fico: "Guarantor Credit",
+};
 
 // Verifiable fields shown as a single value (current = verified ?? initial; edits write
 // to verified) instead of the Initial/Verified pair — like the property fields. Populated
@@ -88,8 +94,10 @@ export function LoanData({
 }) {
   const [status, setStatus] = useState<string | null>(null);
 
-  // Hide trade/lender-only fields from non-lenders (RLS already omits their values).
-  const defs = fieldDefs.filter((d) => isLender || (d.section !== "trade" && !d.lender_only));
+  // Hide the internal sections (trade / closing / data tape) and any lender-only field
+  // from non-lenders (RLS already omits their values).
+  const INTERNAL_SECTIONS = new Set(["trade", "closing", "data_tape"]);
+  const defs = fieldDefs.filter((d) => isLender || (!INTERNAL_SECTIONS.has(d.section) && !d.lender_only));
 
   async function save(def: FieldDef, valueKind: "initial" | "verified", value: string) {
     const res = await saveLoanField({
@@ -107,8 +115,6 @@ export function LoanData({
     setStatus(res.ok ? (locked ? `Locked ${def.label}` : `Unlocked ${def.label}`) : res.error ?? "Failed");
   }
 
-  const byKey = new Map(defs.map((d) => [d.key, d]));
-
   function cardShell(key: string, title: string, children: ReactNode) {
     return (
       <section key={key} className="card overflow-hidden">
@@ -120,7 +126,8 @@ export function LoanData({
     );
   }
 
-  function row(def: FieldDef, label?: string) {
+  function row(def: FieldDef) {
+    const label = DASHBOARD_LABEL[def.key];
     return (
       <FieldRow
         key={def.key}
@@ -135,40 +142,26 @@ export function LoanData({
     );
   }
 
-  // Non-loan sections, minus any field pulled into the curated Loan Info card.
+  // One card per section, fields in the stored sort order. The Loan Info card leads with
+  // the read-only Loan Number pulled from the loan record.
   function sectionCard(section: string) {
-    const inSection = defs
-      .filter((d) => d.section === section && !PRIMARY_LOAN_KEYS.has(d.key))
-      .sort((a, b) => a.sort - b.sort);
+    const inSection = defs.filter((d) => d.section === section).sort((a, b) => a.sort - b.sort);
     if (inSection.length === 0) return null;
-    return cardShell(section, SECTION_LABEL[section] ?? section, inSection.map((d) => row(d)));
+    return cardShell(
+      section,
+      SECTION_LABEL[section] ?? section,
+      <>
+        {section === "loan" && (
+          <Row label="Loan Number">
+            <span className="block truncate px-2 py-1.5 text-sm text-fg">
+              {loan.loan_number ?? loan.opportunity_number ?? "—"}
+            </span>
+          </Row>
+        )}
+        {inSection.map((d) => row(d))}
+      </>,
+    );
   }
-
-  // Curated Loan Info card: a read-only Loan Number pulled from the loan record, then
-  // the chosen fields in order.
-  const loanCard = cardShell(
-    "loan",
-    "Loan Info",
-    <>
-      <Row label="Loan Number">
-        <span className="block truncate px-2 py-1.5 text-sm text-fg">
-          {loan.loan_number ?? loan.opportunity_number ?? "—"}
-        </span>
-      </Row>
-      {PRIMARY_LOAN.map((p) => {
-        const def = byKey.get(p.key);
-        return def ? row(def, p.label) : null;
-      })}
-    </>,
-  );
-
-  // Everything else in the loan section → Additional Loan Info.
-  const additional = defs
-    .filter((d) => d.section === "loan" && !PRIMARY_LOAN_KEYS.has(d.key))
-    .sort((a, b) => a.sort - b.sort);
-  const additionalCard = additional.length
-    ? cardShell("additional_loan", "Additional Loan Info", additional.map((d) => row(d)))
-    : null;
 
   // Initial Property Data: the original (intake) values for property fields, read-only.
   // The live Property card shows the current value (verified once set, else initial).
@@ -181,7 +174,7 @@ export function LoanData({
           "initial_property",
           "Initial Property Data",
           propInitials.map((d) => (
-            <Row key={d.key} label={d.label}>
+            <Row key={d.key} label={DASHBOARD_LABEL[d.key] ?? d.label}>
               <span className="block truncate px-2 py-1.5 text-sm text-muted">
                 {fmtDisplay(d, str(values[d.key]?.initial))}
               </span>
@@ -196,17 +189,19 @@ export function LoanData({
       {canEdit && <SheetSync loanId={loan.id} />}
       <div className="grid items-start gap-3 lg:grid-cols-2">
         <div className="flex flex-col gap-3">
-          {loanCard}
-          {sectionCard("trade")}
+          {sectionCard("loan")}
+          {sectionCard("property")}
           {initialCard}
         </div>
         <div className="flex flex-col gap-3">
-          {sectionCard("property")}
+          {sectionCard("trade")}
           {sectionCard("borrower")}
-          {sectionCard("guarantor")}
-          {additionalCard}
+          {sectionCard("contact")}
+          {sectionCard("closing")}
         </div>
       </div>
+      {sectionCard("data_tape")}
+      {sectionCard("additional")}
       {status && <p className="text-xs text-muted">{status}</p>}
     </div>
   );
