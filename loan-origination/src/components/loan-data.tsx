@@ -191,7 +191,6 @@ export function LoanData({
         <div className="flex flex-col gap-3">
           {sectionCard("loan")}
           {sectionCard("property")}
-          {initialCard}
         </div>
         <div className="flex flex-col gap-3">
           {sectionCard("trade")}
@@ -200,8 +199,13 @@ export function LoanData({
           {sectionCard("closing")}
         </div>
       </div>
-      {sectionCard("data_tape")}
-      {sectionCard("additional")}
+      <div className="grid items-start gap-3 lg:grid-cols-2">
+        <div className="flex flex-col gap-3">{sectionCard("additional")}</div>
+        <div className="flex flex-col gap-3">
+          {sectionCard("data_tape")}
+          {initialCard}
+        </div>
+      </div>
       {status && <p className="text-xs text-muted">{status}</p>}
     </div>
   );
