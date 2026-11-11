@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { askAi, intakeTurn, generateTermSheet, signTermSheet } from "@/app/actions";
 import { IntakeFormCard } from "@/components/intake-form-card";
@@ -36,7 +36,7 @@ export function Chat({
   isLender: boolean;
   intakeMode: boolean;
 }) {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [body, setBody] = useState("");
   const [internal, setInternal] = useState(false);
@@ -50,23 +50,37 @@ export function Chat({
   }, [messages]);
 
   useEffect(() => {
-    const channel = supabase
-      .channel(`messages:${loanId}`)
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "messages", filter: `loan_id=eq.${loanId}` },
-        (payload) => {
-          const m = payload.new as Message;
-          // Defense in depth: never render an internal message to a non-lender,
-          // even if one somehow arrives on the channel (RLS should already prevent it).
-          if (m.is_internal && !isLender) return;
-          setMessages((prev) => (prev.some((p) => p.id === m.id) ? prev : [...prev, m]));
-        },
-      )
-      .subscribe();
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    let active = true;
+
+    (async () => {
+      // Realtime applies RLS, so the socket must carry the user's access token — without
+      // it the connection is anon and the messages SELECT policy (auth.uid()) drops every
+      // event, so AI replies and other participants' messages never arrive live.
+      const { data } = await supabase.auth.getSession();
+      const token = data.session?.access_token;
+      if (token) await supabase.realtime.setAuth(token);
+      if (!active) return;
+
+      channel = supabase
+        .channel(`messages:${loanId}`)
+        .on(
+          "postgres_changes",
+          { event: "INSERT", schema: "public", table: "messages", filter: `loan_id=eq.${loanId}` },
+          (payload) => {
+            const m = payload.new as Message;
+            // Defense in depth: never render an internal message to a non-lender,
+            // even if one somehow arrives on the channel (RLS should already prevent it).
+            if (m.is_internal && !isLender) return;
+            setMessages((prev) => (prev.some((p) => p.id === m.id) ? prev : [...prev, m]));
+          },
+        )
+        .subscribe();
+    })();
 
     return () => {
-      supabase.removeChannel(channel);
+      active = false;
+      if (channel) supabase.removeChannel(channel);
     };
   }, [loanId, isLender, supabase]);
 
@@ -89,6 +103,17 @@ export function Chat({
     return true;
   }
 
+  // Re-sync from the DB (RLS-filtered) after an AI turn, so the AI reply shows even if
+  // the realtime event is delayed or dropped. Merges by id, so nothing is duplicated.
+  async function refreshMessages() {
+    const { data } = await supabase
+      .from("messages")
+      .select("*")
+      .eq("loan_id", loanId)
+      .order("created_at", { ascending: true });
+    if (data) setMessages(data as Message[]);
+  }
+
   async function send(e: React.FormEvent) {
     e.preventDefault();
     const text = body.trim();
@@ -106,6 +131,7 @@ export function Chat({
       const res = await intakeTurn(loanId, text);
       setAiBusy(false);
       if (!res.ok) setAiError(res.error ?? "Intake couldn’t continue.");
+      await refreshMessages();
     }
   }
 
@@ -124,6 +150,7 @@ export function Chat({
     const res = await intakeTurn(loanId, text);
     setAiBusy(false);
     if (!res.ok) setAiError(res.error ?? "Intake couldn’t continue.");
+    await refreshMessages();
   }
 
   // Borrower accepts (or declines) the quoted terms. On Yes, the AI generates a term sheet.
@@ -167,7 +194,7 @@ export function Chat({
     const res = await askAi(loanId, text);
     setAiBusy(false);
     if (!res.ok) setAiError(res.error ?? "The AI couldn't answer.");
-    // The AI reply arrives via realtime.
+    else await refreshMessages(); // pull in the AI reply (don't depend on realtime)
   }
 
   return (
