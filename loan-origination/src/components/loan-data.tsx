@@ -275,12 +275,12 @@ export function LoanData({
         <div className="flex flex-col gap-3">
           {sectionCard("loan")}
           {sectionCard("property")}
+          {sectionCard("dscr_calc")}
         </div>
         <div className="flex flex-col gap-3">
           {sectionCard("trade")}
           {sectionCard("borrower")}
           {sectionCard("contact")}
-          {sectionCard("dscr_calc")}
           {sectionCard("closing")}
         </div>
       </div>
