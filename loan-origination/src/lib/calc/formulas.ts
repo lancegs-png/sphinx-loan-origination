@@ -61,6 +61,11 @@ export function commonCalcs(get: Get): Record<string, unknown> {
     out.first_payment_date = fmtYMD(y, m + 1, 1);
   }
 
+  // Amortization term mirrors the loan term (same value for DSCR); auto-populated so the
+  // LOI and other templates don't require it to be entered separately.
+  const loanTerm = num(get, "loan_term_months");
+  if (loanTerm != null) out.amortization_term_months = loanTerm;
+
   const lockExp = addDays(get("lock_date"), 30);
   if (lockExp) out.lock_expiration_date = lockExp;
 
@@ -81,7 +86,8 @@ export function dscrCalcs(get: Get): Record<string, unknown> {
   const ltv = num(get, "ltv"); // entered input (percent)
   const asIs = num(get, "as_is_value");
   const rate = num(get, "interest_rate");
-  const amortMonths = num(get, "amortization_term_months") ?? 360;
+  // Amortization term = loan term (see commonCalcs); fall back to 360 if unset.
+  const amortMonths = num(get, "loan_term_months") ?? 360;
   const ioMonths = num(get, "io_months") ?? 0;
 
   // loan_amount is derived from LTV: as_is_value x ltv%.
