@@ -77,11 +77,13 @@ const DASHBOARD_LABEL: Record<string, string> = {
   closing_date: "Closing Date",
   disbursement_date: "Disbursement Date",
   first_payment_date: "First Payment Date",
+  reserve_amount: "PI Reserve",
+  insurance_impound: "Insurance Impound",
+  tax_impound: "Tax Impound",
   origination_fee_amount: "Origination Fee",
   underwriting_fee: "Underwriting Fee",
   legal_fee: "Legal Fee",
   prepaid_interest: "Prepaid Interest",
-  reserve_amount: "PI Reserve",
   net_wire: "Net Wire",
 };
 
@@ -207,6 +209,28 @@ export function LoanData({
   function sectionCard(section: string) {
     const inSection = defs.filter((d) => d.section === section).sort((a, b) => a.sort - b.sort);
     if (inSection.length === 0) return null;
+
+    // Closing Calculations reads as a ledger: dates on top, then Loan Amount (a repeat of
+    // the loan field) and each deduction, with Net Wire as the total at the bottom.
+    if (section === "closing") {
+      const dates = inSection.filter((d) => d.type === "date");
+      const amounts = inSection.filter((d) => d.type !== "date" && d.key !== "net_wire");
+      const netWire = inSection.find((d) => d.key === "net_wire");
+      const loanAmountDef = defs.find((d) => d.key === "loan_amount");
+      return cardShell(
+        section,
+        SECTION_LABEL[section],
+        <>
+          {dates.map((d) => row(d))}
+          {loanAmountDef && row(loanAmountDef)}
+          {amounts.map((d) => row(d))}
+          {netWire && (
+            <div className="border-t-2 border-line-strong font-semibold">{row(netWire)}</div>
+          )}
+        </>,
+      );
+    }
+
     return cardShell(
       section,
       SECTION_LABEL[section] ?? section,

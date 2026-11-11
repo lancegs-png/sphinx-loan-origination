@@ -97,18 +97,34 @@ export function dscrCalcs(get: Get): Record<string, unknown> {
   const origPct = num(get, "origination_fee_pct");
   const origination_fee_amount = loanAmount != null && origPct != null ? r2((loanAmount * origPct) / 100) : null;
   const reserveMonths = num(get, "reserve_months");
-  const reserve_amount = piti != null && reserveMonths != null ? r2(piti * reserveMonths) : null;
+  // Closing ledger escrows (dashboard): PI Reserve = P&I x months; impounds = monthly
+  // tax / insurance x months. Net Wire deducts each line below.
+  const reserve_amount =
+    principal_and_interest != null && reserveMonths != null ? r2(principal_and_interest * reserveMonths) : null;
+  const insurance_impound =
+    monthly_insurance != null && reserveMonths != null ? r2(monthly_insurance * reserveMonths) : null;
+  const tax_impound = monthly_taxes != null && reserveMonths != null ? r2(monthly_taxes * reserveMonths) : null;
 
   const payoff = num(get, "payoff_amount") ?? 0;
   const uw = num(get, "underwriting_fee") ?? 0;
   const legal = num(get, "legal_fee") ?? 0;
+  const prepaid = num(get, "prepaid_interest") ?? 0; // manual input on the closing ledger
   const cash_out =
     loanAmount != null
       ? r2(loanAmount - payoff - (origination_fee_amount ?? 0) - uw - legal - (reserve_amount ?? 0))
       : null;
   const net_wire =
     loanAmount != null
-      ? r2(loanAmount - (reserve_amount ?? 0) - (origination_fee_amount ?? 0) - uw - legal)
+      ? r2(
+          loanAmount -
+            (reserve_amount ?? 0) -
+            (insurance_impound ?? 0) -
+            (tax_impound ?? 0) -
+            (origination_fee_amount ?? 0) -
+            uw -
+            legal -
+            prepaid,
+        )
       : null;
 
   return {
@@ -121,6 +137,8 @@ export function dscrCalcs(get: Get): Record<string, unknown> {
     dscr,
     origination_fee_amount,
     reserve_amount,
+    insurance_impound,
+    tax_impound,
     cash_out,
     net_wire,
     cltv: ltv, // 1st lien only
