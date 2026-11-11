@@ -46,6 +46,7 @@ const SINGLE_VALUE_KEYS = new Set([
   "origination_fee_pct",
   "borrower_entity",
   "entity_ein",
+  "entity_type",
   "entity_state",
   "guarantor_first_name",
   "guarantor_last_name",
