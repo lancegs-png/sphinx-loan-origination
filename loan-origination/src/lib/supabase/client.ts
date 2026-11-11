@@ -52,11 +52,40 @@ function clearCorruptAuthCookies() {
 // Run once as soon as this module loads in the browser, before any client is created.
 clearCorruptAuthCookies();
 
+/**
+ * A fetch that strips control characters from outgoing request headers. A stray control
+ * char in any header value (seen only in some production builds) makes the browser throw
+ * "Failed to execute 'fetch' on 'Window': Invalid value" before the request is sent, which
+ * bricked sign-in. Sanitizing the header values here neutralizes it no matter which header
+ * or build quirk introduced the character. Header names/values are ASCII tokens, so removing
+ * C0/C1 control chars never changes a legitimate value.
+ */
+function sanitizingFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  if (init?.headers && !(init.headers instanceof Headers)) {
+    const entries: [string, string][] = Array.isArray(init.headers)
+      ? (init.headers as [string, string][])
+      : Object.entries(init.headers as Record<string, string>);
+    let dirty = false;
+    const cleaned = entries.map(([k, v]) => {
+      const s = String(v);
+      const c = s.replace(/[\u0000-\u001f\u007f-\u009f]/g, '');
+      if (c !== s) {
+        dirty = true;
+        if (typeof console !== 'undefined') console.warn('[supabase] stripped control char from header', k);
+      }
+      return [k, c] as [string, string];
+    });
+    if (dirty) init = { ...init, headers: cleaned };
+  }
+  return fetch(input, init);
+}
+
 /** Browser client (ANON key + session). RLS applies. Used for realtime subscriptions and client reads. */
 export function createClient() {
   clearCorruptAuthCookies();
   return createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    { global: { fetch: sanitizingFetch } },
   );
 }
