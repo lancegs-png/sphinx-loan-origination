@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
 import { saveLoanField, setLoanFieldLock, syncLoanToSheet } from "@/app/actions";
 import type { FieldDef, FieldValues, Loan } from "@/lib/types";
 
@@ -33,8 +34,55 @@ const DASHBOARD_LABEL: Record<string, string> = {
   loan_term_months: "Loan Term",
   reserve_months: "Reserve Months",
   io_months: "Interest Only Months",
+  // Property Information
+  property_address: "Full Address",
+  property_street: "Street Address",
+  property_city: "City",
+  property_state: "State",
+  property_zip: "Zip Code",
+  property_type: "Property Type",
+  unit_count: "Unit Count",
+  occupancy: "Occupancy",
   as_is_value: "As-Is Value",
+  purchase_price: "Purchase Price",
+  original_purchase_price: "Original Purchase Price",
+  monthly_rent: "Monthly Rent",
+  annual_taxes: "Annual Taxes",
+  annual_insurance: "Annual Insurance",
+  annual_hoa: "Annual HOA",
+  payoff_amount: "Payoff",
+  // DSCR Calculation
+  principal_and_interest: "Monthly P+I Payment",
+  monthly_taxes: "Monthly Taxes",
+  monthly_insurance: "Monthly Insurance",
+  monthly_hoa: "Monthly HOA",
+  monthly_piti: "Monthly PITI",
+  dscr: "DSCR",
+  // Trade Information
+  investor_name: "Investor Name",
+  lock_date: "Lock Date",
+  lock_expiration_date: "Lock Expiration",
+  lock_price: "Lock Price",
+  servicer_name: "Servicer",
+  servicing_number: "Servicer ID",
+  // Borrower Information
+  borrower_entity: "Entity Name",
+  entity_ein: "Entity EIN",
+  guarantor_first_name: "Guarantor First Name",
+  guarantor_last_name: "Guarantor Last Name",
+  guarantor_phone: "Guarantor Phone",
+  guarantor_email: "Guarantor Email",
   guarantor_fico: "Guarantor Credit",
+  // Closing Calculations
+  closing_date: "Closing Date",
+  disbursement_date: "Disbursement Date",
+  first_payment_date: "First Payment Date",
+  origination_fee_amount: "Origination Fee",
+  underwriting_fee: "Underwriting Fee",
+  legal_fee: "Legal Fee",
+  prepaid_interest: "Prepaid Interest",
+  reserve_amount: "PI Reserve",
+  net_wire: "Net Wire",
 };
 
 // Verifiable fields shown as a single value (current = verified ?? initial; edits write
@@ -102,6 +150,7 @@ export function LoanData({
   isLender: boolean;
 }) {
   const [status, setStatus] = useState<string | null>(null);
+  const router = useRouter();
 
   // Hide the internal sections (trade / closing / data tape) and any lender-only field
   // from non-lenders (RLS already omits their values).
@@ -117,6 +166,8 @@ export function LoanData({
       valueKind,
     });
     setStatus(res.ok ? `Saved ${def.label}` : res.error ?? "Save failed");
+    // Pull in the recomputed AUTO values (DSCR, monthly P&I/PITI, etc.) after a save.
+    if (res.ok) router.refresh();
   }
 
   async function toggleLock(def: FieldDef, locked: boolean) {
