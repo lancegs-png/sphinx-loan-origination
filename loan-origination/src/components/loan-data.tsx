@@ -151,8 +151,15 @@ export function LoanData({
   canEdit: boolean;
   isLender: boolean;
 }) {
-  const [status, setStatus] = useState<string | null>(null);
+  const [status, setStatus] = useState<{ text: string; ok: boolean } | null>(null);
   const router = useRouter();
+
+  // Auto-dismiss the save toast (errors linger a little longer so they can be read).
+  useEffect(() => {
+    if (!status) return;
+    const t = setTimeout(() => setStatus(null), status.ok ? 2200 : 6000);
+    return () => clearTimeout(t);
+  }, [status]);
 
   // Hide the internal sections (trade / closing / data tape) and any lender-only field
   // from non-lenders (RLS already omits their values).
@@ -167,14 +174,18 @@ export function LoanData({
       value,
       valueKind,
     });
-    setStatus(res.ok ? `Saved ${def.label}` : res.error ?? "Save failed");
+    setStatus(res.ok ? { text: `Saved ${def.label}`, ok: true } : { text: res.error ?? "Save failed", ok: false });
     // Pull in the recomputed AUTO values (DSCR, monthly P&I/PITI, etc.) after a save.
     if (res.ok) router.refresh();
   }
 
   async function toggleLock(def: FieldDef, locked: boolean) {
     const res = await setLoanFieldLock({ loanId: loan.id, key: def.key, locked });
-    setStatus(res.ok ? (locked ? `Locked ${def.label}` : `Unlocked ${def.label}`) : res.error ?? "Failed");
+    setStatus(
+      res.ok
+        ? { text: locked ? `Locked ${def.label}` : `Unlocked ${def.label}`, ok: true }
+        : { text: res.error ?? "Failed", ok: false },
+    );
   }
 
   function cardShell(key: string, title: string, children: ReactNode) {
@@ -293,7 +304,16 @@ export function LoanData({
           {initialCard}
         </div>
       </div>
-      {status && <p className="text-xs text-muted">{status}</p>}
+      {status && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed bottom-4 right-4 z-50 rounded-md px-3 py-2 text-sm font-medium text-white shadow-lg"
+          style={{ background: status.ok ? "#15618f" : "var(--status-outstanding)" }}
+        >
+          {status.text}
+        </div>
+      )}
     </div>
   );
 }
@@ -439,6 +459,15 @@ function CellInput({
   };
   const [value, setValue] = useState(isCurrency ? fmtCurrency(base) : base);
   const taRef = useRef<HTMLTextAreaElement>(null);
+  const focusedRef = useRef(false);
+
+  // Keep the field current when its stored value changes elsewhere (a sheet→app sync, a
+  // recompute, another user) — but never overwrite what someone is actively typing.
+  useEffect(() => {
+    if (!focusedRef.current) setValue(isCurrency ? fmtCurrency(base) : base);
+    // fmtCurrency/isCurrency are derived from the (stable) field def.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [base]);
 
   // Commit on blur. For currency, reformat to $xxx,xxx.00 and only save when the
   // numeric amount actually changed (so re-formatting doesn't trigger a redundant save).
@@ -475,7 +504,11 @@ function CellInput({
         placeholder={placeholder}
         rows={1}
         onChange={(e) => setValue(e.target.value)}
+        onFocus={() => {
+          focusedRef.current = true;
+        }}
         onBlur={() => {
+          focusedRef.current = false;
           if (value !== base) onCommit(value);
         }}
         className={`${cls} resize-none overflow-hidden leading-snug`}
@@ -516,7 +549,13 @@ function CellInput({
       disabled={disabled}
       placeholder={placeholder}
       onChange={(e) => setValue(e.target.value)}
-      onBlur={commit}
+      onFocus={() => {
+        focusedRef.current = true;
+      }}
+      onBlur={() => {
+        focusedRef.current = false;
+        commit();
+      }}
       className={`w-full bg-transparent py-1.5 text-sm text-fg outline-none disabled:opacity-50 ${
         prefix ? "pl-1" : "pl-2"
       } ${suffix ? "pr-1" : "pr-2"}`}
@@ -532,7 +571,11 @@ function CellInput({
         disabled={disabled}
         placeholder={placeholder}
         onChange={(e) => setValue(e.target.value)}
+        onFocus={() => {
+          focusedRef.current = true;
+        }}
         onBlur={() => {
+          focusedRef.current = false;
           if (value !== base) onCommit(value);
         }}
         className={cls}
