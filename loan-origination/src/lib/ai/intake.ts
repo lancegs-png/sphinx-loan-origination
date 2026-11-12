@@ -2,7 +2,7 @@ import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-const MODEL = process.env.ANTHROPIC_MODEL ?? "claude-opus-5-5";
+const MODEL = process.env.ANTHROPIC_MODEL ?? "claude-sonnet-5-5";
 
 // Fields the intake agent extracts (design §6, R-INTAKE-*). Dictionary-native (P17):
 // all captured values go in `fields`, keyed by data-dictionary keys. All optional —

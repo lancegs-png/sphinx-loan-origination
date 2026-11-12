@@ -7,7 +7,7 @@ import { loadFieldValues } from "@/lib/fields";
 import type { ChecklistItem, FieldDef, FieldValues } from "@/lib/types";
 
 // Default to the current Claude model; overridable via env.
-const MODEL = process.env.ANTHROPIC_MODEL ?? "claude-opus-5-5";
+const MODEL = process.env.ANTHROPIC_MODEL ?? "claude-sonnet-5-5";
 
 // ---- AI-proposed changes (lender-only; applied only after the user confirms) ----
 export type ProposedFieldUpdate = { key: string; label: string; value: string };

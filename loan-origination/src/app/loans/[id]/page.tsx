@@ -7,6 +7,10 @@ import { loadLoanActivity, type ActivityEvent } from "@/lib/audit";
 import { DealView } from "@/components/deal-view";
 import type { FieldDef, InternalNote, Loan, Message, Participant } from "@/lib/types";
 
+// AI chat (Ask AI / intake) runs as Server Actions from this page. Give them headroom
+// beyond the platform's short default so a model reply can't be cut off mid-generation.
+export const maxDuration = 60;
+
 const STAGE_ORDER = [
   "intake", "pre_qualification", "quote_term_sheet", "processing",
   "underwriting", "final_approval", "closing", "post_close",
