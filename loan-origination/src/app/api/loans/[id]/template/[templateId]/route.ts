@@ -5,6 +5,7 @@ import { loadCompanyConfig } from "@/lib/company";
 import { buildDataTapeCsv } from "@/lib/templates/data-tape";
 import { buildTemplateData, fillDocx } from "@/lib/templates/docx";
 import { docxToPdf } from "@/lib/templates/pdf";
+import { renderDocTemplate, docTemplatesConfigured } from "@/lib/google/docs";
 import { logEvent } from "@/lib/audit";
 import { TEMPLATES } from "@/lib/templates/registry";
 
@@ -84,6 +85,36 @@ export async function GET(
   // Tagged .docx closing templates — fill {{key}} with real values.
   if (DOCX_TEMPLATES.has(def.id)) {
     const data = await buildTemplateData(supabase, id);
+
+    // Preferred path: render from the deal's Google Doc template — copy, replace {{tags}},
+    // export PDF/Word, all inside the org's own Workspace (works on Vercel, no LibreOffice).
+    // Only the DSCR LOI has a Doc template today (GOOGLE_LOI_TEMPLATE_DOC_ID); other
+    // templates fall through to the bundled .docx. Signature / e-sign-audit placeholders
+    // are blanked here (they're filled only on in-app signing).
+    const docTemplateId = def.id === "dscr_loi" ? process.env.GOOGLE_LOI_TEMPLATE_DOC_ID : undefined;
+    if (docTemplateId && docTemplatesConfigured()) {
+      const filled = {
+        ...data,
+        signature_name: "",
+        signature_sig: "",
+        signature_date: "",
+        "#signed": "",
+        "/signed": "",
+      };
+      try {
+        const out = await renderDocTemplate(docTemplateId, filled, asPdf ? "pdf" : "docx");
+        return new Response(new Uint8Array(out), {
+          headers: {
+            "Content-Type": asPdf ? "application/pdf" : DOCX_MIME,
+            "Content-Disposition": `${asPdf ? "inline" : "attachment"}; filename="${def.name} - ${street}.${asPdf ? "pdf" : "docx"}"`,
+            "Cache-Control": "no-store",
+          },
+        });
+      } catch (e) {
+        return new Response(e instanceof Error ? e.message : "Document export failed.", { status: 503 });
+      }
+    }
+
     const buf = fillDocx(def.id, data);
     if (asPdf) {
       try {
