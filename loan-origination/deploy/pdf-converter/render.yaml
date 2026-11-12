@@ -1,0 +1,23 @@
+# Render Blueprint for the self-hosted PDF converter (Gotenberg).
+#
+# Deploy: push this repo to GitHub, then in Render choose "New +" -> "Blueprint" and
+# point it at the repo. Render reads this file and creates the service. After the
+# first deploy, set the two basic-auth secrets (marked sync: false) in the Render
+# dashboard -> the service -> Environment.
+#
+# Render uses the Dockerfile's `EXPOSE 3000`, so no PORT wiring is needed.
+services:
+  - type: web
+    name: loan-pdf-converter
+    runtime: docker
+    dockerfilePath: ./deploy/pdf-converter/Dockerfile
+    dockerContext: .
+    plan: starter # ~$7/mo; the free plan sleeps and makes the first request slow
+    healthCheckPath: /health
+    envVars:
+      - key: API_ENABLE_BASIC_AUTH
+        value: "true"
+      - key: GOTENBERG_API_BASIC_AUTH_USERNAME
+        sync: false # set in the Render dashboard
+      - key: GOTENBERG_API_BASIC_AUTH_PASSWORD
+        sync: false # set in the Render dashboard
