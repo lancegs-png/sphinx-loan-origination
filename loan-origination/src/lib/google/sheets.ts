@@ -101,6 +101,24 @@ export async function writeCells(
   });
 }
 
+/**
+ * Read the given A1 ranges from a sheet in one batch. Returns a map of range -> first cell's
+ * display value ("" when empty). Used by the inbound reconcile to pull current sheet values.
+ */
+export async function readCells(sheetId: string, ranges: string[]): Promise<Record<string, string>> {
+  if (!ranges.length) return {};
+  const qs = ranges.map((r) => `ranges=${encodeURIComponent(r)}`).join("&");
+  const json = (await api(
+    `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values:batchGet?${qs}&valueRenderOption=FORMATTED_VALUE`,
+    {},
+  )) as { valueRanges?: { range?: string; values?: string[][] }[] };
+  const out: Record<string, string> = {};
+  (json.valueRanges ?? []).forEach((vr, i) => {
+    out[ranges[i]] = vr.values?.[0]?.[0] ?? "";
+  });
+  return out;
+}
+
 export function sheetUrl(sheetId: string): string {
   return `https://docs.google.com/spreadsheets/d/${sheetId}`;
 }

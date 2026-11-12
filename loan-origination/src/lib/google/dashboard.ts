@@ -2,7 +2,7 @@ import "server-only";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { loadFieldValues } from "@/lib/fields";
 import { propertyStreet } from "@/lib/documents/naming";
-import { findDealFolderByStreet, createDealDashboard } from "./drive";
+import { findDealFolderByStreet, findDashboardInFolder, createDealDashboard } from "./drive";
 import { writeCells, sheetUrl } from "./sheets";
 
 /**
@@ -149,10 +149,15 @@ export async function syncLoanToDashboard(loanId: string): Promise<{ url: string
   // Resolve (or create) the deal's dashboard sheet.
   let sheetId = loan.sheet_id as string | null;
   if (!sheetId) {
-    const name = `Loan Dashboard - ${propertyStreet(loan.property_address)} - ${ref}`
-      .replace(/\s+/g, " ")
-      .trim();
-    sheetId = await createDealDashboard(driveFolderId, name);
+    // Reuse a dashboard already in the folder (e.g. one the loan-setup skill created) so we
+    // never leave a second, un-synced copy behind; only create one if the folder has none.
+    sheetId = await findDashboardInFolder(driveFolderId).catch(() => null);
+    if (!sheetId) {
+      const name = `Loan Dashboard - ${propertyStreet(loan.property_address)} - ${ref}`
+        .replace(/\s+/g, " ")
+        .trim();
+      sheetId = await createDealDashboard(driveFolderId, name);
+    }
     await admin.from("loans").update({ sheet_id: sheetId }).eq("id", loanId);
   }
 

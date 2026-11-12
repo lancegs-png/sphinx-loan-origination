@@ -12,7 +12,7 @@ import {
 import { recomputeLoan } from "@/lib/calc";
 import { sheetsConfigured, appendSheetRow } from "@/lib/google/sheets";
 import { syncLoanToDashboard } from "@/lib/google/dashboard";
-import { pushFieldsToSheet } from "@/lib/google/sheet-sync";
+import { pushFieldsToSheet, reconcileLoanSheet } from "@/lib/google/sheet-sync";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { logEvent } from "@/lib/audit";
 import { answerLoanQuestion } from "@/lib/ai/record-keeper";
@@ -731,6 +731,32 @@ export async function syncLoanToSheet(
     return { ok: true, url };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Dashboard sync failed." };
+  }
+}
+
+/**
+ * Pull the loan's Google Sheet into the app (sheet -> app), reconciling every mapped input
+ * cell (last-writer-wins, blanks ignored). Lender only. Called on open and on a light timer
+ * while a loan is viewed, so sheet edits land without any per-sheet Apps Script trigger.
+ */
+export async function pullFromSheet(loanId: string): Promise<{ ok: boolean; changed?: number; error?: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("is_lending_team")
+    .eq("id", user.id)
+    .single();
+  if (!profile?.is_lending_team) return { ok: false, error: "Lending team only." };
+
+  try {
+    const { changed } = await reconcileLoanSheet(loanId);
+    return { ok: true, changed: changed.length };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Pull failed." };
   }
 }
 

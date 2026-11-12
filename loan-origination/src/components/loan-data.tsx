@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { saveLoanField, setLoanFieldLock, syncLoanToSheet } from "@/app/actions";
+import { saveLoanField, setLoanFieldLock, syncLoanToSheet, pullFromSheet } from "@/app/actions";
 import type { FieldDef, FieldValues, Loan } from "@/lib/types";
 
 // Section cards, labelled and ordered to mirror the DSCR dashboard's Loan Data tab.
@@ -160,6 +160,37 @@ export function LoanData({
     const t = setTimeout(() => setStatus(null), status.ok ? 2200 : 6000);
     return () => clearTimeout(t);
   }, [status]);
+
+  // Inbound sync: pull any sheet edits into the app on open and on a light timer while a
+  // lender is viewing. (app -> sheet is already instant; this is what lets sheet -> app work
+  // with no per-loan Apps Script trigger.) Best-effort; refresh only when something changed.
+  useEffect(() => {
+    if (!canEdit || !isLender) return;
+    let alive = true;
+    let busy = false;
+    const pull = async () => {
+      if (busy) return;
+      busy = true;
+      try {
+        const res = await pullFromSheet(loan.id);
+        if (alive && res.ok && (res.changed ?? 0) > 0) {
+          const n = res.changed ?? 0;
+          setStatus({ text: `Pulled ${n} update${n === 1 ? "" : "s"} from the sheet`, ok: true });
+          router.refresh();
+        }
+      } catch {
+        /* best-effort */
+      } finally {
+        busy = false;
+      }
+    };
+    void pull();
+    const t = setInterval(pull, 25000);
+    return () => {
+      alive = false;
+      clearInterval(t);
+    };
+  }, [canEdit, isLender, loan.id, router]);
 
   // Hide the internal sections (trade / closing / data tape) and any lender-only field
   // from non-lenders (RLS already omits their values).

@@ -3,7 +3,7 @@ import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { loadFieldValues, upsertFieldValue, coerceForType } from "@/lib/fields";
 import { recomputeLoan } from "@/lib/calc";
 import { logEvent } from "@/lib/audit";
-import { writeCells } from "./sheets";
+import { writeCells, readCells } from "./sheets";
 import { LOAN_DATA_CELLS, DATA_TAPE_CELLS, cellValue } from "./dashboard";
 
 /**
@@ -44,6 +44,22 @@ function toIsoDate(s: string): string | null {
   return null;
 }
 
+/** Coerce/validate a sheet display value for a field's type (shared by edit + reconcile). */
+type Coerced = { ok: true; value: unknown } | { ok: false; reason: string };
+function coerceSheetValue(type: string, options: string[] | null, raw: string): Coerced {
+  if (type === "date") {
+    const v = toIsoDate(raw);
+    return v === null ? { ok: false, reason: "unparseable date" } : { ok: true, value: v };
+  }
+  if (type === "select") {
+    const opts = options ?? [];
+    const match = opts.length ? opts.find((o) => o.toLowerCase() === raw.trim().toLowerCase()) : raw.trim();
+    return match ? { ok: true, value: match } : { ok: false, reason: "not a valid option" };
+  }
+  const v = coerceForType(type, raw);
+  return v === null ? { ok: false, reason: "empty/invalid value" } : { ok: true, value: v };
+}
+
 export type SheetEdit = { sheetId: string; tab: string; cell: string; value: string; editedAt: string };
 export type SheetEditResult = { status: "applied" | "ignored" | "skipped"; reason?: string; key?: string };
 
@@ -68,20 +84,9 @@ export async function applySheetEdit(edit: SheetEdit): Promise<SheetEditResult> 
   if (!def) return { status: "ignored", reason: "unknown field" };
   if (def.source === "calculated" || def.source === "system") return { status: "ignored", reason: "read-only field" };
 
-  const type = def.type as string;
-  let value: unknown;
-  if (type === "date") {
-    value = toIsoDate(edit.value);
-    if (value === null) return { status: "skipped", reason: "unparseable date", key };
-  } else if (type === "select") {
-    const opts = (def.options as string[] | null) ?? [];
-    const match = opts.length ? opts.find((o) => o.toLowerCase() === edit.value.trim().toLowerCase()) : edit.value.trim();
-    if (!match) return { status: "skipped", reason: "not a valid option", key };
-    value = match;
-  } else {
-    value = coerceForType(type, edit.value);
-    if (value === null) return { status: "skipped", reason: "empty/invalid value", key };
-  }
+  const c = coerceSheetValue(def.type as string, def.options as string[] | null, edit.value);
+  if (!c.ok) return { status: "skipped", reason: c.reason, key };
+  const value = c.value;
 
   // Last-writer-wins: skip if the app changed this field more recently than the sheet edit.
   const { data: row } = await admin
@@ -152,4 +157,79 @@ export async function pushFieldsToSheet(loanId: string, changedKeys: string[]): 
     return { range: `'${loc.tab}'!${loc.cell}`, value: out ?? "" };
   });
   await writeCells(loan.sheet_id as string, cells);
+}
+
+/**
+ * Pull the loan's sheet into the app in one pass (inbound sync without an Apps Script
+ * trigger): read every mapped input cell, and for each non-blank cell whose value differs
+ * from the field model, apply it (ignore blanks, skip calculated/invalid), then recompute
+ * once. Because app->sheet writes are instant, a cell that differs here was edited in the
+ * sheet more recently — so "sheet differs -> sheet wins" is last-writer-wins in practice.
+ * Safe to call on a timer while a loan is open; no-op without a linked sheet. Returns the
+ * keys it changed.
+ */
+export async function reconcileLoanSheet(loanId: string): Promise<{ changed: string[] }> {
+  const admin = createServiceRoleClient();
+  const { data: loan } = await admin.from("loans").select("sheet_id").eq("id", loanId).maybeSingle();
+  const sheetId = loan?.sheet_id as string | null | undefined;
+  if (!sheetId) return { changed: [] };
+
+  const entries = [...CELL_TO_FIELD.entries()]; // ["<tab>!<cell>", "<field key>"]
+  const ranges = entries.map(([tc]) => {
+    const [tab, cell] = tc.split("!");
+    return `'${tab}'!${cell}`;
+  });
+
+  const [read, fv, { data: defs }] = await Promise.all([
+    readCells(sheetId, ranges),
+    loadFieldValues(admin, loanId),
+    admin.from("field_definitions").select("key,type,source,options"),
+  ]);
+  const defMap = new Map(
+    (defs ?? []).map((d) => [d.key, d as { type: string; source: string | null; options: string[] | null }]),
+  );
+
+  const changed: string[] = [];
+  for (let i = 0; i < entries.length; i++) {
+    const fieldKey = entries[i][1];
+    const raw = read[ranges[i]] ?? "";
+    if (raw.trim() === "") continue; // ignore blanks (never clear an app field)
+    const { base: key, idx } = splitKey(fieldKey);
+    const def = defMap.get(key);
+    if (!def || def.source === "calculated" || def.source === "system") continue;
+    const c = coerceSheetValue(def.type, def.options, raw);
+    if (!c.ok) continue;
+
+    const cell = fv[fieldKey];
+    const hasVerified = cell?.verified != null && cell.verified !== "";
+    const current = cell?.current;
+    if (JSON.stringify(current ?? null) === JSON.stringify(c.value ?? null)) continue; // unchanged
+
+    const { error } = await upsertFieldValue(admin, {
+      loanId,
+      key,
+      idx,
+      valueKind: hasVerified ? "verified" : "initial",
+      value: c.value,
+      actorId: null,
+    });
+    if (error) continue;
+    changed.push(fieldKey);
+    await logEvent(admin, {
+      loanId,
+      actorId: null,
+      eventType: "field_updated",
+      isInternal: true,
+      payload: { key, idx, new: c.value ?? null, source: "google_sheet" },
+    });
+  }
+
+  if (changed.length) {
+    try {
+      await recomputeLoan(loanId);
+    } catch {
+      /* calc is best-effort */
+    }
+  }
+  return { changed };
 }

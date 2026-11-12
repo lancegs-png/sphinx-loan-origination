@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
-import { driveConfigured, findDealFolderByStreet, createDealFolder, createDealDashboard, uploadFileToDrive } from "@/lib/google/drive";
+import { driveConfigured, findDealFolderByStreet, findDashboardInFolder, createDealFolder, createDealDashboard, uploadFileToDrive } from "@/lib/google/drive";
 import { loadGuarantorNames } from "@/lib/fields";
 import { resolveDocumentBaseName, indexedName, fileExt, propertyStreet } from "@/lib/documents/naming";
 import { logEvent } from "@/lib/audit";
@@ -73,9 +73,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         (loan.loan_type ?? "").toUpperCase() === "DSCR"
           ? `Loan Dashboard - ${propertyStreet(loan.property_address)} - ${ref}`.replace(/\s+/g, " ").trim()
           : null;
+      // Reuse a dashboard already in the folder before making one, so a loan set up via the
+      // skill (which drops a "DSCR Deal Dashboard" in the folder) doesn't get a second copy.
+      const existingDash = await findDashboardInFolder(driveFolderId).catch(() => null);
       const [, dashboardId] = await Promise.all([
         admin.from("loans").update({ drive_folder_id: driveFolderId }).eq("id", loanId),
-        dashName ? createDealDashboard(driveFolderId, dashName).catch(() => null) : Promise.resolve(null),
+        existingDash ??
+          (dashName ? createDealDashboard(driveFolderId, dashName).catch(() => null) : Promise.resolve(null)),
       ]);
       // Track the dashboard sheet so "Sync to Google Sheet" writes into it (best-effort:
       // tolerated if the sheet_id column isn't present yet).

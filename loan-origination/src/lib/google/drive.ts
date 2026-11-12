@@ -61,6 +61,30 @@ export async function findDealFolderByStreet(street: string): Promise<string | n
   return files.length === 1 ? files[0].id : null;
 }
 
+/**
+ * Find an existing DSCR dashboard spreadsheet already sitting in a deal folder, so the app
+ * reuses it instead of creating a second copy (the cause of duplicate dashboards). Matches a
+ * non-trashed Google Sheet whose name contains "Dashboard"; prefers the canonical
+ * "DSCR Deal Dashboard - …" over the app's older "Loan Dashboard - …" name. Returns the
+ * chosen sheet's id, or null when the folder has none (caller then creates one).
+ */
+export async function findDashboardInFolder(folderId: string): Promise<string | null> {
+  if (!folderId) return null;
+  const token = await accessToken();
+  const q =
+    `'${folderId}' in parents and mimeType='application/vnd.google-apps.spreadsheet'` +
+    ` and trashed=false and name contains 'Dashboard'`;
+  const url =
+    `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}` +
+    `&fields=files(id,name,createdTime)&supportsAllDrives=true&includeItemsFromAllDrives=true&pageSize=20`;
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  if (!res.ok) return null;
+  const files = ((await res.json()) as { files?: { id: string; name: string }[] }).files ?? [];
+  if (!files.length) return null;
+  const canonical = files.find((f) => /dscr deal dashboard/i.test(f.name));
+  return (canonical ?? files[0]).id;
+}
+
 /** Create a Drive folder for a deal under the configured parent; returns its id. */
 export async function createDealFolder(name: string): Promise<string> {
   const parent = process.env.GOOGLE_DRIVE_PARENT_FOLDER_ID;
