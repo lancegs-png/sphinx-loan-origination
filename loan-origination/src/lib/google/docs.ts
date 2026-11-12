@@ -81,10 +81,13 @@ export async function renderDocTemplate(
 
   try {
     // 2. Replace every {{key}} with its value (matchCase: the tags are lowercase keys).
+    // Newlines in a value (e.g. a multi-property Exhibit A list) become Docs line breaks
+    // (U+000B / Shift+Enter) rather than "\n": replaceAllText would otherwise start a new
+    // paragraph per line, which re-triggers any list numbering on the host paragraph.
     const requests = Object.entries(data).map(([key, value]) => ({
       replaceAllText: {
         containsText: { text: `{{${key}}}`, matchCase: true },
-        replaceText: value ?? "",
+        replaceText: (value ?? "").replace(/\r?\n/g, "\u000B"),
       },
     }));
     if (requests.length) {
