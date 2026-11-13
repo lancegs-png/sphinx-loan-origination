@@ -1,5 +1,5 @@
-import { addLoan } from "@/app/actions";
 import { AppShell } from "@/components/app-shell";
+import { NewDealButton } from "@/components/new-deal-button";
 import { PipelineView } from "@/components/pipeline-view";
 import { PipelineSummary } from "@/components/pipeline-summary";
 import { navFor } from "@/lib/nav";
@@ -21,24 +21,16 @@ export function PipelineHome({
           <div>
             <h1 className="text-[1.75rem] font-bold text-fg">Pipeline</h1>
           </div>
-          <form action={addLoan}>
-            <button className="btn btn-primary">
-              <span aria-hidden className="-ml-0.5 text-base leading-none">+</span>
-              New loan
-            </button>
-          </form>
+          <NewDealButton />
         </div>
 
         {loans.length === 0 ? (
           <div className="card grid place-items-center px-6 py-20 text-center">
             <p className="text-base font-medium text-fg">No loans yet</p>
-            <p className="mt-1 text-sm text-muted">Start a new loan to begin intake.</p>
-            <form action={addLoan} className="mt-5">
-              <button className="btn btn-primary">
-                <span aria-hidden className="-ml-0.5 text-base leading-none">+</span>
-                New loan
-              </button>
-            </form>
+            <p className="mt-1 text-sm text-muted">Start a new deal to begin intake.</p>
+            <div className="mt-5">
+              <NewDealButton />
+            </div>
           </div>
         ) : (
           <>

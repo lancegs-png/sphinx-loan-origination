@@ -103,6 +103,50 @@ export async function createDealFolder(name: string): Promise<string> {
   return json.id;
 }
 
+// The "Architecture Folder" holds the master subfolder structure every deal folder copies.
+const ARCHITECTURE_FOLDER_ID =
+  process.env.GOOGLE_ARCHITECTURE_FOLDER_ID || "1wdEKSdlGcSD_OmFCRNczyxI68lgI2sWn";
+// Fallback subfolder set if the Architecture Folder can't be read.
+const SUBFOLDER_FALLBACK = [
+  "Bank Statements", "Borrower Documents", "Conditions", "Entity Documents",
+  "Insurance Documents", "Property Documents", "Title Documents",
+];
+
+/**
+ * Create the standard deal subfolders inside `folderId`, mirroring the live Architecture
+ * Folder (so a subfolder the team adds to the master is picked up) and falling back to the
+ * known set. Best-effort and parallel; returns the names created.
+ */
+export async function createDealSubfolders(folderId: string): Promise<string[]> {
+  const token = await accessToken();
+  let names = SUBFOLDER_FALLBACK;
+  try {
+    const q =
+      `'${ARCHITECTURE_FOLDER_ID}' in parents and mimeType='application/vnd.google-apps.folder'` +
+      ` and trashed=false`;
+    const url =
+      `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}` +
+      `&fields=files(name)&pageSize=200&supportsAllDrives=true&includeItemsFromAllDrives=true`;
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    if (res.ok) {
+      const files = ((await res.json()) as { files?: { name: string }[] }).files ?? [];
+      if (files.length) names = files.map((f) => f.name).sort();
+    }
+  } catch {
+    /* keep fallback */
+  }
+  await Promise.all(
+    names.map((name) =>
+      fetch("https://www.googleapis.com/drive/v3/files?supportsAllDrives=true&fields=id", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ name, mimeType: "application/vnd.google-apps.folder", parents: [folderId] }),
+      }).catch(() => {}),
+    ),
+  );
+  return names;
+}
+
 // The master "DSCR Deal Dashboard - Template" in the Architecture folder. Each new deal
 // folder gets its own copy, forced to a native Google Sheet so the Sheets API can write
 // its cells. Overridable per environment.

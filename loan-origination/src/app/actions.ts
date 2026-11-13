@@ -17,6 +17,7 @@ import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { logEvent } from "@/lib/audit";
 import { answerLoanQuestion } from "@/lib/ai/record-keeper";
 import { loadLoanChecklist } from "@/lib/checklist";
+import { openDeal } from "@/lib/loans/open-deal";
 import { STAGES } from "@/lib/stages";
 import {
   runIntakeTurn,
@@ -84,6 +85,53 @@ export async function addLoan() {
   });
 
   redirect(`/loans/${loan.id}`);
+}
+
+/**
+ * Open a new DSCR deal end-to-end from a short form: the Drive folder (+ subfolders +
+ * dashboard), the loan record with the address/guarantor seeded, the program checklist,
+ * and either an OPP#### (opportunity) or a permanent SPHX straight into Processing (loan).
+ * Lending-team only. Returns the new loan id so the client lands on its page.
+ */
+export async function openLoan(input: {
+  address: string;
+  guarantorFirst?: string;
+  guarantorLast?: string;
+  kind: "opportunity" | "loan";
+}): Promise<{ ok: boolean; id?: string; error?: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Not signed in" };
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("lender_user_type")
+    .eq("id", user.id)
+    .single();
+  if (!profile?.lender_user_type) return { ok: false, error: "Lending team only" };
+
+  const address = input.address.trim();
+  if (!address) return { ok: false, error: "Enter the property address" };
+
+  // A "loan" goes straight into Processing with its SPHX number assigned now; an
+  // "opportunity" stays at intake with an OPP#### until the term sheet is signed.
+  const isLoan = input.kind === "loan";
+  try {
+    const result = await openDeal(createServiceRoleClient(), {
+      address,
+      guarantorFirst: input.guarantorFirst,
+      guarantorLast: input.guarantorLast,
+      stage: isLoan ? "processing" : "intake",
+      assignNumber: isLoan,
+      createdByUserId: user.id,
+      accountManagerId: profile.lender_user_type === "account_manager" ? user.id : null,
+    });
+    return { ok: true, id: result.id };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Could not open the loan" };
+  }
 }
 
 /**
