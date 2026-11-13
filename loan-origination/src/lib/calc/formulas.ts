@@ -13,13 +13,15 @@ const num = (get: Get, key: string): number | null => {
 const r2 = (n: number) => Math.round(n * 100) / 100;
 const r3 = (n: number) => Math.round(n * 1000) / 1000;
 
-// Monthly fully-amortizing payment; interest-only when ioMonths > 0.
-function monthlyPI(principal: number | null, ratePct: number | null, amortMonths: number, ioMonths: number): number | null {
+// Monthly fully-amortizing payment; interest-only when ioMonths > 0. Returns the FULL
+// precision value (not rounded to cents) so downstream reserves/escrows that multiply it
+// by a month count don't compound the cent-rounding — callers round for display.
+function monthlyPIraw(principal: number | null, ratePct: number | null, amortMonths: number, ioMonths: number): number | null {
   if (principal == null || ratePct == null) return null;
   const i = ratePct / 100 / 12;
-  if (i === 0) return r2(principal / amortMonths);
-  if (ioMonths > 0) return r2(principal * i); // interest-only during the IO period
-  return r2((principal * i) / (1 - Math.pow(1 + i, -amortMonths)));
+  if (i === 0) return principal / amortMonths;
+  if (ioMonths > 0) return principal * i; // interest-only during the IO period
+  return (principal * i) / (1 - Math.pow(1 + i, -amortMonths));
 }
 
 const parseYMD = (v: unknown): [number, number, number] | null => {
@@ -97,7 +99,8 @@ export function dscrCalcs(get: Get): Record<string, unknown> {
 
   // loan_amount is derived from LTV: as_is_value x ltv%.
   const loanAmount = asIs != null && ltv != null ? r2((asIs * ltv) / 100) : null;
-  const principal_and_interest = monthlyPI(loanAmount, rate, amortMonths, ioMonths);
+  const pi_raw = monthlyPIraw(loanAmount, rate, amortMonths, ioMonths); // full precision
+  const principal_and_interest = pi_raw == null ? null : r2(pi_raw); // displayed to the cent
   const piti =
     principal_and_interest == null
       ? null
@@ -109,9 +112,10 @@ export function dscrCalcs(get: Get): Record<string, unknown> {
   const origination_fee_amount = loanAmount != null && origPct != null ? r2((loanAmount * origPct) / 100) : null;
   const reserveMonths = num(get, "reserve_months");
   // Closing ledger escrows (dashboard): PI Reserve = P&I x months; impounds = monthly
-  // tax / insurance x months. Net Wire deducts each line below.
+  // tax / insurance x months. Net Wire deducts each line below. Multiply the full-precision
+  // monthly P&I so the cent-rounding on the displayed payment doesn't compound into the reserve.
   const reserve_amount =
-    principal_and_interest != null && reserveMonths != null ? r2(principal_and_interest * reserveMonths) : null;
+    pi_raw != null && reserveMonths != null ? r2(pi_raw * reserveMonths) : null;
   // Multiply the full-precision monthly figure (annual / 12), then round once — so the
   // cent-rounding on the displayed monthly value never compounds into the impound.
   const insurance_impound =
