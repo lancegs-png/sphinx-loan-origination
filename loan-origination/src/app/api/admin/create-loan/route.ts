@@ -56,6 +56,9 @@ export async function POST(req: Request) {
   const driveFolderId = String(body.driveFolderId ?? "").trim() || null;
   const sheetId = String(body.sheetId ?? "").trim() || null;
   const assignNumber = body.assignNumber === true;
+  // An already-issued number (importing an existing loan) — set directly, don't pull the
+  // next SPHX from the sequence or append to the tracker (it's already numbered/tracked).
+  const loanNumberIn = String(body.loanNumber ?? "").trim().replace(/[^A-Za-z0-9_-]/g, "");
 
   const admin = createServiceRoleClient();
 
@@ -84,9 +87,16 @@ export async function POST(req: Request) {
   }
   await recomputeLoan(loan.id).catch(() => {});
 
-  // 3. Assign the permanent SPHX number now, if requested (idempotent in the DB function).
+  // 3. Number: set an explicit existing number, or assign the next SPHX from the sequence.
   let loanNumber: string | null = null;
-  if (assignNumber) {
+  if (loanNumberIn) {
+    const { error: numErr } = await admin
+      .from("loans")
+      .update({ loan_number: loanNumberIn })
+      .eq("id", loan.id);
+    if (numErr) return new Response(`Set loan number failed: ${numErr.message}`, { status: 500 });
+    loanNumber = loanNumberIn;
+  } else if (assignNumber) {
     const { data: n } = await admin.rpc("assign_loan_number", { p_loan_id: loan.id });
     loanNumber = (n as string | null) ?? null;
     // Add the deal to the org Loan Tracker when it gets its SPHX number (matches
