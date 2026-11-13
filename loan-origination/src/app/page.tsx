@@ -17,7 +17,9 @@ export default async function Home() {
     .from("loans")
     .select("*")
     .order("created_at", { ascending: false });
-  const loans = (data as Loan[]) ?? [];
+  // Hide archived loans from the pipeline (they stay in the DB and can be unarchived).
+  // Filtered in code, not in the query, so this is safe even before the enum value exists.
+  const loans = ((data as Loan[]) ?? []).filter((l) => l.status !== "archived");
 
   // Lending team → Pipeline home (R-AUTH-7, R-UI-8).
   if (profile.is_lending_team) {

@@ -40,6 +40,19 @@ export async function POST(req: Request) {
     return Response.json({ ok: true, count: data?.length ?? 0, loans: data ?? [] });
   }
 
+  if (action === "archive" || action === "unarchive") {
+    const ids = Array.isArray(body.ids) ? body.ids.map(String).filter(Boolean) : [];
+    if (ids.length === 0) return new Response("No ids provided", { status: 400 });
+    const status = action === "archive" ? "archived" : "active";
+    const { data: updated, error } = await admin
+      .from("loans")
+      .update({ status })
+      .in("id", ids)
+      .select("id,loan_number,opportunity_number,property_address,status");
+    if (error) return new Response(error.message, { status: 500 });
+    return Response.json({ ok: true, updated: updated?.length ?? 0, status, loans: updated ?? [] });
+  }
+
   if (action === "delete") {
     const ids = Array.isArray(body.ids) ? body.ids.map(String).filter(Boolean) : [];
     if (ids.length === 0) return new Response("No ids provided", { status: 400 });
