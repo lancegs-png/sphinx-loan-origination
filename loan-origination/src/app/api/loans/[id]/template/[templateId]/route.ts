@@ -17,6 +17,21 @@ const DOCX_TEMPLATES = new Set([
 ]);
 const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
+// Each tagged template can render from a Google Doc (copy → replace {{tags}} → export),
+// which works on Vercel. The Doc id lives in the template's own env var; when it's unset,
+// the request falls back to the bundled .docx path (needs LibreOffice, local-only).
+const DOC_TEMPLATE_ENV: Record<string, string> = {
+  dscr_loi: "GOOGLE_LOI_TEMPLATE_DOC_ID",
+  ach_form: "GOOGLE_ACH_TEMPLATE_DOC_ID",
+  first_payment_letter: "GOOGLE_FIRST_PAYMENT_TEMPLATE_DOC_ID",
+  assignment_allonge: "GOOGLE_ASSIGNMENT_TEMPLATE_DOC_ID",
+};
+// Tags present in a template but not produced by buildTemplateData (filled only on in-app
+// signing) — blanked so they never render as literal {{tags}}.
+const DOC_TEMPLATE_BLANKS: Record<string, Record<string, string>> = {
+  dscr_loi: { signature_name: "", signature_sig: "", signature_date: "" },
+};
+
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -86,21 +101,14 @@ export async function GET(
   if (DOCX_TEMPLATES.has(def.id)) {
     const data = await buildTemplateData(supabase, id);
 
-    // Preferred path: render from the deal's Google Doc template — copy, replace {{tags}},
-    // export PDF/Word, all inside the org's own Workspace (works on Vercel, no LibreOffice).
-    // Only the DSCR LOI has a Doc template today (GOOGLE_LOI_TEMPLATE_DOC_ID); other
-    // templates fall through to the bundled .docx. Signature / e-sign-audit placeholders
-    // are blanked here (they're filled only on in-app signing).
-    const docTemplateId = def.id === "dscr_loi" ? process.env.GOOGLE_LOI_TEMPLATE_DOC_ID : undefined;
+    // Preferred path: render from the template's Google Doc (per DOC_TEMPLATE_ENV) — copy,
+    // replace {{tags}}, export PDF/Word, all inside the org's own Workspace (works on
+    // Vercel, no LibreOffice). Templates whose env var is unset fall through to the bundled
+    // .docx. Any tags not produced by buildTemplateData are blanked (DOC_TEMPLATE_BLANKS).
+    const docEnv = DOC_TEMPLATE_ENV[def.id];
+    const docTemplateId = docEnv ? process.env[docEnv] : undefined;
     if (docTemplateId && docTemplatesConfigured()) {
-      const filled = {
-        ...data,
-        signature_name: "",
-        signature_sig: "",
-        signature_date: "",
-        "#signed": "",
-        "/signed": "",
-      };
+      const filled = { ...data, ...(DOC_TEMPLATE_BLANKS[def.id] ?? {}) };
       try {
         const out = await renderDocTemplate(docTemplateId, filled, asPdf ? "pdf" : "docx");
         return new Response(new Uint8Array(out), {
