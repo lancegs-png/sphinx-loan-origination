@@ -149,7 +149,7 @@ async function main() {
     await fetch(`https://www.googleapis.com/drive/v3/files/${folder.id}?supportsAllDrives=true&fields=id`, {
       method: "PATCH",
       headers: { Authorization: `Bearer ${t}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ name: `${ref} ${folderName}` }),
+      body: JSON.stringify({ name: `[${ref}] ${folderName}` }),
     }).catch(() => {});
   }
 
