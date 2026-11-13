@@ -2,7 +2,10 @@
 
 import { useMemo, useState } from "react";
 import { createLoanChecklist, setChecklistItemStatus } from "@/app/actions";
+import { createClient } from "@/lib/supabase/client";
 import type { ChecklistItem, LoanDocument } from "@/lib/types";
+
+const DOC_BUCKET = "loan-documents";
 
 const STATUSES = ["outstanding", "ordered", "update_needed", "approved", "not_applicable"];
 const STATUS_LABEL: Record<string, string> = {
@@ -81,11 +84,36 @@ export function DocumentsPanel({
     if (files.length === 0) return;
     setUploading(itemId);
     setMsg(null);
-    const fd = new FormData();
-    fd.set("checklistItemId", itemId);
-    for (const f of files) fd.append("files", f);
     try {
-      const res = await fetch(`/api/loans/${loanId}/documents`, { method: "POST", body: fd });
+      const supabase = createClient();
+      // Upload each file's bytes straight to Storage via a signed URL (no request-size cap),
+      // then hand the server just the storage paths to record + mirror to Drive.
+      const uploads: { storagePath: string; fileName: string; size: number; contentType: string }[] = [];
+      for (const f of files) {
+        const signRes = await fetch(`/api/loans/${loanId}/documents/sign`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ fileName: f.name }),
+        });
+        if (!signRes.ok) {
+          setMsg("Upload failed — could not start the upload.");
+          return;
+        }
+        const { path, token } = (await signRes.json()) as { path: string; token: string };
+        const { error: upErr } = await supabase.storage
+          .from(DOC_BUCKET)
+          .uploadToSignedUrl(path, token, f, { contentType: f.type || undefined });
+        if (upErr) {
+          setMsg(`Upload failed: ${upErr.message}`);
+          return;
+        }
+        uploads.push({ storagePath: path, fileName: f.name, size: f.size, contentType: f.type });
+      }
+      const res = await fetch(`/api/loans/${loanId}/documents`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ checklistItemId: itemId, uploads }),
+      });
       if (!res.ok) {
         setMsg((await res.text().catch(() => "")) || "Upload failed.");
       } else {

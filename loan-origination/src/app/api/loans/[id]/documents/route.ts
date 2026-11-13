@@ -7,6 +7,9 @@ import { logEvent } from "@/lib/audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// Mirroring a large file to Drive (download from Storage, upload to Drive) can take a
+// moment, so give the function headroom beyond the default.
+export const maxDuration = 60;
 
 const BUCKET = "loan-documents";
 
@@ -40,12 +43,44 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     .single();
   if (!loan) return new Response("Not found", { status: 404 });
 
-  const form = await req.formData();
-  const checklistItemId = (form.get("checklistItemId") as string) || null;
-  const files = form.getAll("files").filter((f): f is File => f instanceof File && f.size > 0);
-  if (files.length === 0) return new Response("No files provided", { status: 400 });
-
   const admin = createServiceRoleClient();
+
+  // Two intake shapes, normalized to `inputs`:
+  //  - multipart form: small files, bytes carried in the request (legacy / small uploads);
+  //  - JSON: large files the browser already uploaded straight to Storage via a signed URL
+  //    (bypasses the serverless request-size limit) — we get the storage path, not bytes.
+  type UploadInput = { origName: string; size: number; type: string; bytes?: Uint8Array; storagePath?: string };
+  let checklistItemId: string | null = null;
+  let inputs: UploadInput[] = [];
+  if ((req.headers.get("content-type") || "").includes("application/json")) {
+    const body = (await req.json().catch(() => ({}))) as {
+      checklistItemId?: string | null;
+      uploads?: { storagePath?: string; fileName?: string; size?: number; contentType?: string }[];
+    };
+    checklistItemId = body.checklistItemId || null;
+    inputs = (body.uploads ?? [])
+      // Pin every upload under this loan's folder — never trust an arbitrary storage path.
+      .filter((u) => typeof u.storagePath === "string" && u.storagePath.startsWith(`${loanId}/`))
+      .map((u) => ({
+        origName: String(u.fileName ?? "file"),
+        size: Number(u.size) || 0,
+        type: String(u.contentType ?? ""),
+        storagePath: u.storagePath as string,
+      }));
+  } else {
+    const form = await req.formData();
+    checklistItemId = (form.get("checklistItemId") as string) || null;
+    const files = form.getAll("files").filter((f): f is File => f instanceof File && f.size > 0);
+    inputs = await Promise.all(
+      files.map(async (f) => ({
+        origName: f.name,
+        size: f.size,
+        type: f.type,
+        bytes: new Uint8Array(await f.arrayBuffer()),
+      })),
+    );
+  }
+  if (inputs.length === 0) return new Response("No files provided", { status: 400 });
 
   // Ensure a Drive folder exists for this deal (created once), if Drive is configured.
   let driveFolderId = loan.drive_folder_id as string | null;
@@ -132,30 +167,43 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   }
 
   const created: unknown[] = [];
-  for (let i = 0; i < files.length; i++) {
-    const file = files[i];
-    const bytes = new Uint8Array(await file.arrayBuffer());
+  for (let i = 0; i < inputs.length; i++) {
+    const inp = inputs[i];
     // Rename to the convention (2nd+ file of the same type -> "Appraisal 2 - …"); keep
     // the original extension. Falls back to the uploaded name when there's no convention.
-    const finalName = baseName ? indexedName(baseName, typeOffset + i, fileExt(file.name)) : file.name;
-    const safe = finalName.replace(/[^a-zA-Z0-9._-]/g, "_");
-    const path = `${loanId}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}_${safe}`;
-    const contentType = file.type || "application/octet-stream";
+    const finalName = baseName ? indexedName(baseName, typeOffset + i, fileExt(inp.origName)) : inp.origName;
+    const contentType = inp.type || "application/octet-stream";
 
-    const { error: upErr } = await admin.storage
-      .from(BUCKET)
-      .upload(path, bytes, { contentType, upsert: false });
-    if (upErr) return new Response(`Storage upload failed: ${upErr.message}`, { status: 500 });
+    // Resolve the Storage path + bytes. JSON: the browser already uploaded to `storagePath`,
+    // so we only pull the bytes if we need to mirror to Drive. Multipart: upload now.
+    let path: string;
+    let bytes: Uint8Array | undefined;
+    if (inp.storagePath) {
+      path = inp.storagePath;
+      if (useDrive && driveFolderId) {
+        const { data: blob } = await admin.storage.from(BUCKET).download(path);
+        if (blob) bytes = new Uint8Array(await blob.arrayBuffer());
+      }
+    } else {
+      if (!inp.bytes) return new Response("No file bytes", { status: 400 });
+      const safe = finalName.replace(/[^a-zA-Z0-9._-]/g, "_");
+      path = `${loanId}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}_${safe}`;
+      const { error: upErr } = await admin.storage
+        .from(BUCKET)
+        .upload(path, inp.bytes, { contentType, upsert: false });
+      if (upErr) return new Response(`Storage upload failed: ${upErr.message}`, { status: 500 });
+      bytes = inp.bytes;
+    }
 
     let driveFileId: string | null = null;
     let driveLink: string | null = null;
-    if (useDrive && driveFolderId) {
+    if (useDrive && driveFolderId && bytes) {
       try {
         const r = await uploadFileToDrive({ folderId: driveFolderId, fileName: finalName, bytes, contentType });
         driveFileId = r.id;
         driveLink = r.webViewLink;
       } catch {
-        /* best-effort: keep the Supabase copy even if Drive mirroring fails */
+        /* best-effort: keep the Storage copy even if Drive mirroring fails */
       }
     }
 
@@ -165,8 +213,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         loan_id: loanId,
         checklist_item_id: checklistItemId,
         file_name: finalName,
-        content_type: file.type || null,
-        size_bytes: file.size,
+        content_type: inp.type || null,
+        size_bytes: inp.size,
         storage_path: path,
         drive_file_id: driveFileId,
         drive_web_link: driveLink,
