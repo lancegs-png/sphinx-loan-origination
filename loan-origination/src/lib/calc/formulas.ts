@@ -79,9 +79,14 @@ export function dscrCalcs(get: Get): Record<string, unknown> {
   const annualTaxes = num(get, "annual_taxes");
   const annualIns = num(get, "annual_insurance");
   const annualHoa = num(get, "annual_hoa");
-  const monthly_taxes = annualTaxes == null ? null : r2(annualTaxes / 12);
-  const monthly_insurance = annualIns == null ? null : r2(annualIns / 12);
-  const monthly_hoa = annualHoa == null ? null : r2(annualHoa / 12);
+  // Raw (unrounded) monthly figures — used for downstream math so rounding doesn't
+  // compound. The *_display values are what the app/dashboard show (rounded to cents).
+  const monthly_taxes_raw = annualTaxes == null ? null : annualTaxes / 12;
+  const monthly_insurance_raw = annualIns == null ? null : annualIns / 12;
+  const monthly_hoa_raw = annualHoa == null ? null : annualHoa / 12;
+  const monthly_taxes = monthly_taxes_raw == null ? null : r2(monthly_taxes_raw);
+  const monthly_insurance = monthly_insurance_raw == null ? null : r2(monthly_insurance_raw);
+  const monthly_hoa = monthly_hoa_raw == null ? null : r2(monthly_hoa_raw);
 
   const ltv = num(get, "ltv"); // entered input (percent)
   const asIs = num(get, "as_is_value");
@@ -107,9 +112,12 @@ export function dscrCalcs(get: Get): Record<string, unknown> {
   // tax / insurance x months. Net Wire deducts each line below.
   const reserve_amount =
     principal_and_interest != null && reserveMonths != null ? r2(principal_and_interest * reserveMonths) : null;
+  // Multiply the full-precision monthly figure (annual / 12), then round once — so the
+  // cent-rounding on the displayed monthly value never compounds into the impound.
   const insurance_impound =
-    monthly_insurance != null && reserveMonths != null ? r2(monthly_insurance * reserveMonths) : null;
-  const tax_impound = monthly_taxes != null && reserveMonths != null ? r2(monthly_taxes * reserveMonths) : null;
+    monthly_insurance_raw != null && reserveMonths != null ? r2(monthly_insurance_raw * reserveMonths) : null;
+  const tax_impound =
+    monthly_taxes_raw != null && reserveMonths != null ? r2(monthly_taxes_raw * reserveMonths) : null;
 
   const payoff = num(get, "payoff_amount") ?? 0;
   const uw = num(get, "underwriting_fee") ?? 0;
