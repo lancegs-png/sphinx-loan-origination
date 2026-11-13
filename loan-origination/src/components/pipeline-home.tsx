@@ -1,6 +1,6 @@
 import { addLoan } from "@/app/actions";
 import { AppShell } from "@/components/app-shell";
-import { PipelineTable } from "@/components/pipeline-table";
+import { PipelineView } from "@/components/pipeline-view";
 import { PipelineSummary } from "@/components/pipeline-summary";
 import { navFor } from "@/lib/nav";
 import type { Loan, Profile } from "@/lib/types";
@@ -43,7 +43,7 @@ export function PipelineHome({
         ) : (
           <>
             <PipelineSummary loans={loans} />
-            <PipelineTable loans={loans} guarantors={guarantors} />
+            <PipelineView loans={loans} guarantors={guarantors} />
           </>
         )}
       </main>

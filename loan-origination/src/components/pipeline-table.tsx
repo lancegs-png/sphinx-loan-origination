@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { STAGES, stageLabel } from "@/lib/stages";
+import { STAGES, stageLabel, stageIndex } from "@/lib/stages";
 import type { Loan } from "@/lib/types";
 
 function money(n: number | null) {
@@ -124,6 +124,13 @@ export function PipelineTable({
     });
   }, [loans, query, stage, type, guarantors]);
 
+  // Default order: latest stage first (Post-Close → … → Intake), newest-first within a
+  // stage (the incoming order is created_at desc, and the sort is stable).
+  const sorted = useMemo(
+    () => [...filtered].sort((a, b) => stageIndex(b.stage) - stageIndex(a.stage)),
+    [filtered],
+  );
+
   const shownCols = ALL_COLS.filter((c) => visible[c.key]);
   const hasFilters = query.trim() !== "" || stage !== "" || type !== "";
 
@@ -224,14 +231,14 @@ export function PipelineTable({
               </tr>
             </thead>
             <tbody>
-              {filtered.length === 0 ? (
+              {sorted.length === 0 ? (
                 <tr>
                   <td colSpan={shownCols.length + 1} className="px-5 py-14 text-center text-muted">
                     No loans match your filters.
                   </td>
                 </tr>
               ) : (
-                filtered.map((l) => (
+                sorted.map((l) => (
                   <tr
                     key={l.id}
                     className="group border-b border-line last:border-0 transition-colors hover:bg-surface-2/60"
