@@ -271,7 +271,7 @@ export function PipelineTable({
                             return (
                               <span className="text-fg">
                                 <span className="block">{street}</span>
-                                {rest && <span className="block">{rest}</span>}
+                                {rest && <span className="block whitespace-nowrap">{rest}</span>}
                               </span>
                             );
                           })()}
