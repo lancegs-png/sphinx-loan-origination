@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { setLoanStage } from "@/app/actions";
-import { STAGES } from "@/lib/stages";
+import { STAGE_BUCKETS, bucketIndex } from "@/lib/stages";
 import type { Loan } from "@/lib/types";
 
 function money(n: number | null) {
@@ -22,9 +22,11 @@ function closeDate(d: string | null | undefined) {
 }
 
 /**
- * Kanban board of the pipeline: one column per stage, a card per loan. Drag a card to
- * another column to move the deal to that stage (setLoanStage). Moves are optimistic and
- * revert on failure. Clicking a card (without dragging) opens the loan.
+ * Kanban board of the pipeline: one column per funnel bucket (Opportunity → Closed, the
+ * same six stages the deal-view dropdown shows), a card per loan. Drag a card to another
+ * column to move the deal into that bucket — it sets the bucket's entry stage via
+ * setLoanStage, exactly like the dropdown (STAGE_BUCKETS[i].stages[0]). Moves are optimistic
+ * and revert on failure. Clicking a card (without dragging) opens the loan.
  */
 export function PipelineKanban({
   loans,
@@ -36,7 +38,7 @@ export function PipelineKanban({
   const router = useRouter();
   const [items, setItems] = useState<Loan[]>(loans);
   const [dragId, setDragId] = useState<string | null>(null);
-  const [overStage, setOverStage] = useState<string | null>(null);
+  const [overBucket, setOverBucket] = useState<number | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
 
   // Re-sync when the server data changes (e.g. after a move's router.refresh) — adjust
@@ -48,9 +50,11 @@ export function PipelineKanban({
     setItems(loans);
   }
 
-  async function move(id: string, stage: string) {
+  async function moveToBucket(id: string, bucketIdx: number) {
     const loan = items.find((l) => l.id === id);
-    if (!loan || loan.stage === stage) return;
+    if (!loan || bucketIndex(loan.stage) === bucketIdx) return; // already in this bucket
+    const stage = STAGE_BUCKETS[bucketIdx]?.stages[0];
+    if (!stage) return;
     const prev = loan.stage;
     setItems((cur) => cur.map((l) => (l.id === id ? { ...l, stage } : l)));
     setMsg(null);
@@ -68,30 +72,30 @@ export function PipelineKanban({
       {msg && <p className="text-sm text-[var(--status-outstanding)]">{msg}</p>}
       <div className="overflow-x-auto pb-2">
         <div className="flex gap-3" style={{ minWidth: "min-content" }}>
-          {STAGES.map((s) => {
-            const col = items.filter((l) => l.stage === s.key);
+          {STAGE_BUCKETS.map((b, i) => {
+            const col = items.filter((l) => bucketIndex(l.stage) === i);
             return (
               <div
-                key={s.key}
+                key={b.label}
                 onDragOver={(e) => {
                   e.preventDefault();
-                  setOverStage(s.key);
+                  setOverBucket(i);
                 }}
-                onDragLeave={() => setOverStage((d) => (d === s.key ? null : d))}
+                onDragLeave={() => setOverBucket((d) => (d === i ? null : d))}
                 onDrop={(e) => {
                   e.preventDefault();
-                  setOverStage(null);
+                  setOverBucket(null);
                   const id = e.dataTransfer.getData("text/plain") || dragId;
-                  if (id) void move(id, s.key);
+                  if (id) void moveToBucket(id, i);
                   setDragId(null);
                 }}
                 className={`flex w-[16rem] shrink-0 flex-col rounded-lg border p-2 ${
-                  overStage === s.key ? "border-gold bg-gold/5" : "border-line bg-surface-2"
+                  overBucket === i ? "border-gold bg-gold/5" : "border-line bg-surface-2"
                 }`}
               >
                 <div className="flex items-center justify-between px-1 py-1.5">
                   <span className="text-[11px] font-semibold uppercase tracking-wide text-muted">
-                    {s.label}
+                    {b.label}
                   </span>
                   <span className="text-[11px] font-medium text-muted">{col.length}</span>
                 </div>
