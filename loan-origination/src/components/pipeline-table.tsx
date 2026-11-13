@@ -21,6 +21,14 @@ function closeDate(d: string | null | undefined) {
   return m ? `${m[2]}/${m[3]}/${m[1]}` : String(d);
 }
 
+// Street on the first line; city, state and ZIP (everything after the first comma) on the
+// second — always, regardless of length.
+function addressLines(a: string | null | undefined): [string, string] {
+  if (!a) return ["—", ""];
+  const i = a.indexOf(",");
+  return i === -1 ? [a, ""] : [a.slice(0, i).trim(), a.slice(i + 1).trim()];
+}
+
 type ColKey = "property" | "borrower" | "guarantor" | "amount" | "type" | "stage" | "close";
 
 const ALL_COLS: { key: ColKey; label: string; align?: "right" }[] = [
@@ -257,7 +265,16 @@ export function PipelineTable({
                         key={c.key}
                         className={`px-5 py-3.5 ${c.align === "right" ? "text-right" : ""}`}
                       >
-                        {c.key === "property" && <span className="text-fg">{l.property_address ?? "—"}</span>}
+                        {c.key === "property" &&
+                          (() => {
+                            const [street, rest] = addressLines(l.property_address);
+                            return (
+                              <span className="text-fg">
+                                <span className="block">{street}</span>
+                                {rest && <span className="block">{rest}</span>}
+                              </span>
+                            );
+                          })()}
                         {c.key === "borrower" && <span className="text-fg">{l.borrower_name ?? "—"}</span>}
                         {c.key === "guarantor" && <span className="text-fg">{guarantors[l.id] ?? "—"}</span>}
                         {c.key === "amount" && (
