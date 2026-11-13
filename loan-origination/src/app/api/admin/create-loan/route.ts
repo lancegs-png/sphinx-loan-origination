@@ -2,6 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { upsertFieldValue } from "@/lib/fields";
 import { recomputeLoan } from "@/lib/calc";
+import { ensureProgramAndChecklist } from "@/lib/checklist-seed";
 import { syncLoanToDashboard } from "@/lib/google/dashboard";
 
 export const runtime = "nodejs";
@@ -85,7 +86,15 @@ export async function POST(req: Request) {
     loanNumber = (n as string | null) ?? null;
   }
 
-  // 4. Seed the linked dashboard with the loan's values (best-effort).
+  // 4. Set the program and build the document checklist (so the Documents tab is populated).
+  let checklistItems = 0;
+  try {
+    checklistItems = (await ensureProgramAndChecklist(admin, loan.id)).checklistItems;
+  } catch {
+    /* best-effort: the program/checklist can be regenerated later */
+  }
+
+  // 5. Seed the linked dashboard with the loan's values (best-effort).
   let dashboard: string | null = null;
   try {
     dashboard = (await syncLoanToDashboard(loan.id)).url;
@@ -102,5 +111,6 @@ export async function POST(req: Request) {
     drive_folder_id: driveFolderId,
     sheet_id: sheetId,
     dashboard,
+    checklist_items: checklistItems,
   });
 }
