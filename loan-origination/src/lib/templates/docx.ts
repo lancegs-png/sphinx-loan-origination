@@ -23,6 +23,9 @@ export function fillDocx(templateId: string, data: Record<string, string>): Buff
 }
 
 export const money = (v: unknown) => `$${Math.round(Number(v)).toLocaleString("en-US")}`;
+// Exact dollars-and-cents (no rounding) — e.g. the ACH / payment-letter PITI amount.
+export const money2 = (v: unknown) =>
+  `$${Number(v).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 /**
  * Flat {{tag}} -> value map for the closing templates, from the field store plus
@@ -49,7 +52,9 @@ export async function buildTemplateData(
   const fmt = (key: string, v: unknown): string => {
     if (v == null || v === "") return "";
     const t = typeOf[key];
-    if (t === "currency") return money(v);
+    // Monthly PITI is an exact payment amount (ACH authorization / payment letters) — show
+    // cents; other currency fields stay rounded to whole dollars.
+    if (t === "currency") return key === "monthly_piti" ? money2(v) : money(v);
     if (t === "percent") return `${v}%`;
     if (t === "date") {
       const m = String(v).match(/^(\d{4})-(\d{2})-(\d{2})/);
