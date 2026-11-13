@@ -4,9 +4,14 @@ import { upsertFieldValue } from "@/lib/fields";
 import { recomputeLoan } from "@/lib/calc";
 import { ensureProgramAndChecklist } from "@/lib/checklist-seed";
 import { syncLoanToDashboard } from "@/lib/google/dashboard";
+import { sheetsConfigured, appendSheetRow } from "@/lib/google/sheets";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+// The org "Loan Number Tracker" sheet (see src/app/actions.ts / signTermSheet).
+const LOAN_TRACKER_SHEET_ID =
+  process.env.GOOGLE_LOAN_TRACKER_SHEET_ID || "1FLrQZqFAJ7v-8cZeT3EGTPJ_Vut6JLPp_rNSXwEbm4Y";
 
 /**
  * Ops-only: open a new loan in the app (the record addLoan creates, minus the chat intake
@@ -84,6 +89,15 @@ export async function POST(req: Request) {
   if (assignNumber) {
     const { data: n } = await admin.rpc("assign_loan_number", { p_loan_id: loan.id });
     loanNumber = (n as string | null) ?? null;
+    // Add the deal to the org Loan Tracker when it gets its SPHX number (matches
+    // signTermSheet / promote-loan). Best-effort — never fail creation on a tracker write.
+    if (loanNumber && sheetsConfigured()) {
+      try {
+        await appendSheetRow(LOAN_TRACKER_SHEET_ID, "Loan Number Tracker", [address, loanNumber]);
+      } catch {
+        /* ignore tracker failures */
+      }
+    }
   }
 
   // 4. Set the program and build the document checklist (so the Documents tab is populated).

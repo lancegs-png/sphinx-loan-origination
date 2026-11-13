@@ -167,6 +167,20 @@ export async function uploadFileToDrive(args: {
   return { id: json.id, webViewLink: json.webViewLink ?? null };
 }
 
+/** Rename a Drive file (PATCH its name). */
+export async function renameDriveFile(fileId: string, name: string): Promise<void> {
+  const token = await accessToken();
+  const res = await fetch(
+    `https://www.googleapis.com/drive/v3/files/${fileId}?supportsAllDrives=true&fields=id`,
+    {
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    },
+  );
+  if (!res.ok) throw new Error(`Drive rename ${res.status}: ${(await res.text()).slice(0, 200)}`);
+}
+
 /**
  * Best-effort removal of a Drive file: move it to the trash (PATCH trashed=true)
  * rather than hard-delete. On a Shared Drive the service account is a Content Manager,
