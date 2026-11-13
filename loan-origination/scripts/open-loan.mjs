@@ -141,6 +141,18 @@ async function main() {
   if (!res.ok) die(`create-loan endpoint ${res.status}: ${bodyText.slice(0, 300)}`);
   const out = JSON.parse(bodyText);
 
+  // Convention: folder name is "<loan number> <address> [borrower]". The number is known
+  // only after the loan record exists (assigned SPHX or OPP), so prepend it now.
+  const ref = out.loan_number || out.opportunity_number;
+  if (ref) {
+    const t = await tok();
+    await fetch(`https://www.googleapis.com/drive/v3/files/${folder.id}?supportsAllDrives=true&fields=id`, {
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${t}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ name: `${ref} ${folderName}` }),
+    }).catch(() => {});
+  }
+
   console.log(`\n✓ Loan opened`);
   console.log(`  Number:    ${out.loan_number || out.opportunity_number}${out.loan_number ? ` (opp ${out.opportunity_number})` : ""}`);
   console.log(`  App:       ${APP_URL}/loans/${out.id}`);

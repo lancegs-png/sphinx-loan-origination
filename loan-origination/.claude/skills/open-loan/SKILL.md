@@ -24,7 +24,7 @@ are `/api/admin/promote-loan` (opportunity → signed loan) and `/api/admin/reli
 
 Confirm with the user (don't guess these):
 - **Address** — full street, city, ST, ZIP.
-- **Borrower name** — goes on the folder (`<address> [First Last]`) and as the guarantor.
+- **Borrower name** — goes on the folder (named `<loan number> <address> [First Last]`) and as the guarantor.
   If they want it address-only for now, omit `--borrower`.
 - **Number** — OPP#### now with the SPHX assigned at signing (default), or assign the SPHX
   **now** (`--sphinx`). 

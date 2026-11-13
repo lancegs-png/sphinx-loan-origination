@@ -94,7 +94,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       // convention ("<Address> [Guarantor]").
       const existing = await findDealFolderByStreet(propertyStreet(loan.property_address ?? "")).catch(() => null);
       const label =
-        [loan.property_address ?? "", guarantor ? `[${guarantor}]` : ""]
+        [String(ref ?? ""), loan.property_address ?? "", guarantor ? `[${guarantor}]` : ""]
           .filter(Boolean)
           .join(" ")
           .replace(/\s+/g, " ")
