@@ -118,13 +118,26 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     documentTypeName: docTypeName,
   });
 
+  // Continue the "Appraisal", "Appraisal 2", "Appraisal 3" numbering across separate
+  // uploads, not just within one request: start from however many documents of this type
+  // (same checklist item) are already on the loan, so a second upload doesn't collide.
+  let typeOffset = 0;
+  if (baseName && checklistItemId) {
+    const { count } = await admin
+      .from("loan_documents")
+      .select("id", { count: "exact", head: true })
+      .eq("loan_id", loanId)
+      .eq("checklist_item_id", checklistItemId);
+    typeOffset = count ?? 0;
+  }
+
   const created: unknown[] = [];
   for (let i = 0; i < files.length; i++) {
     const file = files[i];
     const bytes = new Uint8Array(await file.arrayBuffer());
     // Rename to the convention (2nd+ file of the same type -> "Appraisal 2 - …"); keep
     // the original extension. Falls back to the uploaded name when there's no convention.
-    const finalName = baseName ? indexedName(baseName, i, fileExt(file.name)) : file.name;
+    const finalName = baseName ? indexedName(baseName, typeOffset + i, fileExt(file.name)) : file.name;
     const safe = finalName.replace(/[^a-zA-Z0-9._-]/g, "_");
     const path = `${loanId}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}_${safe}`;
     const contentType = file.type || "application/octet-stream";
