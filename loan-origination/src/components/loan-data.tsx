@@ -192,6 +192,34 @@ export function LoanData({
     };
   }, [canEdit, isLender, loan.id, router]);
 
+  // Collapsible section cards. All open by default except these three; the choice is
+  // remembered per browser.
+  const [collapsed, setCollapsed] = useState<Set<string>>(
+    () => new Set(["additional", "data_tape", "initial_property"]),
+  );
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("sphinx.loandata.collapsed");
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      if (raw) setCollapsed(new Set(JSON.parse(raw) as string[]));
+    } catch {
+      /* ignore */
+    }
+  }, []);
+  function toggleSection(key: string) {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      try {
+        localStorage.setItem("sphinx.loandata.collapsed", JSON.stringify([...next]));
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  }
+
   // Hide the internal sections (trade / closing / data tape) and any lender-only field
   // from non-lenders (RLS already omits their values).
   const INTERNAL_SECTIONS = new Set(["trade", "closing", "data_tape"]);
@@ -220,12 +248,35 @@ export function LoanData({
   }
 
   function cardShell(key: string, title: string, children: ReactNode) {
+    const isOpen = !collapsed.has(key);
     return (
       <section key={key} className="card overflow-hidden">
-        <h3 className="border-b border-[#bfdcf0] bg-[#e6f2fb] px-3 py-2 text-xs font-semibold uppercase tracking-wide text-[#15618f]">
-          {title}
-        </h3>
-        <div className="divide-y divide-line">{children}</div>
+        <button
+          type="button"
+          onClick={() => toggleSection(key)}
+          aria-expanded={isOpen}
+          className="flex w-full items-center justify-between gap-2 border-b border-[#bfdcf0] bg-[#e6f2fb] px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-[#15618f]"
+        >
+          <span>{title}</span>
+          <svg
+            aria-hidden
+            viewBox="0 0 12 12"
+            className={`h-3 w-3 shrink-0 transition-transform duration-200 ${isOpen ? "rotate-90" : ""}`}
+          >
+            <path d="M4 2l4 4-4 4" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
+        {/* grid-rows 1fr↔0fr animates the height smoothly; the inner overflow-hidden clips
+            the content as it collapses, and sibling cards slide up in the flex column. */}
+        <div
+          className={`grid transition-[grid-template-rows] duration-300 ease-in-out ${
+            isOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+          }`}
+        >
+          <div className="overflow-hidden">
+            <div className="divide-y divide-line">{children}</div>
+          </div>
+        </div>
       </section>
     );
   }
