@@ -14,6 +14,13 @@ function money(n: number | null) {
   }).format(n);
 }
 
+// Close date as MM/DD/YYYY (month-day-year). Keeps the stored YYYY-MM-DD if it doesn't parse.
+function closeDate(d: string | null | undefined) {
+  if (!d) return "—";
+  const m = String(d).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m ? `${m[2]}/${m[3]}/${m[1]}` : String(d);
+}
+
 type ColKey = "property" | "borrower" | "guarantor" | "amount" | "type" | "stage" | "close";
 
 const ALL_COLS: { key: ColKey; label: string; align?: "right" }[] = [
@@ -257,7 +264,7 @@ export function PipelineTable({
                           </span>
                         )}
                         {c.key === "close" && (
-                          <span className="tabular-nums text-muted">{l.closing_date ?? "—"}</span>
+                          <span className="tabular-nums whitespace-nowrap text-muted">{closeDate(l.closing_date)}</span>
                         )}
                       </td>
                     ))}
