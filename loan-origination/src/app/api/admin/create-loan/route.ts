@@ -44,6 +44,7 @@ export async function POST(req: Request) {
       sheetId: String(body.sheetId ?? "").trim() || null,
       assignNumber: body.assignNumber === true,
       loanNumber: String(body.loanNumber ?? ""),
+      stage: String(body.stage ?? "").trim() || undefined,
     });
     return Response.json({ ok: true, ...result });
   } catch (e) {
