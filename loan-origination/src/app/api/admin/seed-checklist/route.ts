@@ -1,4 +1,4 @@
-import { timingSafeEqual } from "node:crypto";
+import { secretOk } from "@/lib/admin-auth";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { ensureProgramAndChecklist } from "@/lib/checklist-seed";
 
@@ -10,13 +10,6 @@ export const dynamic = "force-dynamic";
  * for loans opened without one (e.g. before create-loan seeded it). Idempotent. Service
  * role, gated by SHEETS_SYNC_SECRET.
  */
-function secretOk(given: string): boolean {
-  const expected = process.env.SHEETS_SYNC_SECRET ?? "";
-  if (!expected || !given) return false;
-  const a = Buffer.from(given);
-  const b = Buffer.from(expected);
-  return a.length === b.length && timingSafeEqual(a, b);
-}
 
 export async function POST(req: Request) {
   let body: Record<string, unknown>;

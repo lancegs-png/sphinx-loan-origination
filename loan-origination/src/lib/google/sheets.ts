@@ -1,6 +1,10 @@
 import "server-only";
 import { GoogleAuth } from "google-auth-library";
 
+/** The org "Loan Number Tracker" sheet ([Address, Loan Number] rows); overridable via env. */
+export const LOAN_TRACKER_SHEET_ID =
+  process.env.GOOGLE_LOAN_TRACKER_SHEET_ID || "1FLrQZqFAJ7v-8cZeT3EGTPJ_Vut6JLPp_rNSXwEbm4Y";
+
 const SCOPES = [
   "https://www.googleapis.com/auth/spreadsheets",
   "https://www.googleapis.com/auth/drive",

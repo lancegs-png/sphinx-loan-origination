@@ -1,14 +1,10 @@
-import { timingSafeEqual } from "node:crypto";
+import { secretOk } from "@/lib/admin-auth";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
-import { sheetsConfigured, appendSheetRow } from "@/lib/google/sheets";
+import { sheetsConfigured, appendSheetRow, LOAN_TRACKER_SHEET_ID } from "@/lib/google/sheets";
 import { logEvent } from "@/lib/audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-// Mirrors the constant in src/app/actions.ts (signTermSheet).
-const LOAN_TRACKER_SHEET_ID =
-  process.env.GOOGLE_LOAN_TRACKER_SHEET_ID || "1FLrQZqFAJ7v-8cZeT3EGTPJ_Vut6JLPp_rNSXwEbm4Y";
 
 /**
  * Ops-only: promote an opportunity to a loan when its term sheet was signed OUTSIDE the
@@ -18,13 +14,6 @@ const LOAN_TRACKER_SHEET_ID =
  * appends the deal to the org "Loan Number Tracker" sheet. Runs as the service role,
  * gated solely by SHEETS_SYNC_SECRET — same trust model as /api/sheets/edit.
  */
-function secretOk(given: string): boolean {
-  const expected = process.env.SHEETS_SYNC_SECRET ?? "";
-  if (!expected || !given) return false;
-  const a = Buffer.from(given);
-  const b = Buffer.from(expected);
-  return a.length === b.length && timingSafeEqual(a, b);
-}
 
 export async function POST(req: Request) {
   let body: Record<string, unknown>;

@@ -1,4 +1,4 @@
-import { timingSafeEqual } from "node:crypto";
+import { secretOk } from "@/lib/admin-auth";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { syncLoanToDashboard } from "@/lib/google/dashboard";
 
@@ -12,13 +12,6 @@ export const maxDuration = 60;
  * Use after creating a loan's folder so the dashboard is linked + populated. Service role,
  * gated by SHEETS_SYNC_SECRET.
  */
-function secretOk(given: string): boolean {
-  const expected = process.env.SHEETS_SYNC_SECRET ?? "";
-  if (!expected || !given) return false;
-  const a = Buffer.from(given);
-  const b = Buffer.from(expected);
-  return a.length === b.length && timingSafeEqual(a, b);
-}
 
 export async function POST(req: Request) {
   let body: Record<string, unknown>;

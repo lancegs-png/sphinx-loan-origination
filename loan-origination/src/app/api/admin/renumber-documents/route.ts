@@ -1,4 +1,4 @@
-import { timingSafeEqual } from "node:crypto";
+import { secretOk } from "@/lib/admin-auth";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { indexedName, fileExt } from "@/lib/documents/naming";
 import { renameDriveFile } from "@/lib/google/drive";
@@ -13,13 +13,6 @@ export const dynamic = "force-dynamic";
  * become "<base> 2", "<base> 3", …, renaming both the DB row and the Drive file. Idempotent.
  * Service role, gated by SHEETS_SYNC_SECRET.
  */
-function secretOk(given: string): boolean {
-  const expected = process.env.SHEETS_SYNC_SECRET ?? "";
-  if (!expected || !given) return false;
-  const a = Buffer.from(given);
-  const b = Buffer.from(expected);
-  return a.length === b.length && timingSafeEqual(a, b);
-}
 
 const stripExt = (name: string): string => {
   const e = fileExt(name);

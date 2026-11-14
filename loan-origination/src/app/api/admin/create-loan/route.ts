@@ -1,4 +1,4 @@
-import { timingSafeEqual } from "node:crypto";
+import { secretOk } from "@/lib/admin-auth";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { openDeal } from "@/lib/loans/open-deal";
 
@@ -15,13 +15,6 @@ export const maxDuration = 60;
  * Shares all creation logic with the in-app "New loan" action via openDeal(); the open-loan
  * script pre-creates the Drive folder/dashboard and passes their ids here.
  */
-function secretOk(given: string): boolean {
-  const expected = process.env.SHEETS_SYNC_SECRET ?? "";
-  if (!expected || !given) return false;
-  const a = Buffer.from(given);
-  const b = Buffer.from(expected);
-  return a.length === b.length && timingSafeEqual(a, b);
-}
 
 export async function POST(req: Request) {
   let body: Record<string, unknown>;

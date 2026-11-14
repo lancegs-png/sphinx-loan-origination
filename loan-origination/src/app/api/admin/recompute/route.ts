@@ -1,4 +1,4 @@
-import { timingSafeEqual } from "node:crypto";
+import { secretOk } from "@/lib/admin-auth";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { recomputeLoan } from "@/lib/calc";
 import { loadFieldValues } from "@/lib/fields";
@@ -13,13 +13,6 @@ export const maxDuration = 300;
  * values. Returns each loan's key escrow/reserve figures so the result can be verified.
  * Service role, gated by SHEETS_SYNC_SECRET.
  */
-function secretOk(given: string): boolean {
-  const expected = process.env.SHEETS_SYNC_SECRET ?? "";
-  if (!expected || !given) return false;
-  const a = Buffer.from(given);
-  const b = Buffer.from(expected);
-  return a.length === b.length && timingSafeEqual(a, b);
-}
 
 const REPORT_KEYS = [
   "principal_and_interest",

@@ -1,4 +1,4 @@
-import { timingSafeEqual } from "node:crypto";
+import { secretOk } from "@/lib/admin-auth";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { upsertFieldValue, loadFieldValues } from "@/lib/fields";
 import { recomputeLoan } from "@/lib/calc";
@@ -13,13 +13,6 @@ export const maxDuration = 60;
  * sync the linked dashboard. For data migrations / backfills. Keys may carry a repeat index
  * as "key#2". Service role, gated by SHEETS_SYNC_SECRET.
  */
-function secretOk(given: string): boolean {
-  const expected = process.env.SHEETS_SYNC_SECRET ?? "";
-  if (!expected || !given) return false;
-  const a = Buffer.from(given);
-  const b = Buffer.from(expected);
-  return a.length === b.length && timingSafeEqual(a, b);
-}
 
 const REPORT_KEYS = ["loan_amount", "principal_and_interest", "monthly_piti", "dscr", "reserve_amount", "insurance_impound", "tax_impound"] as const;
 

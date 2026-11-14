@@ -4,7 +4,7 @@ import { upsertFieldValue } from "@/lib/fields";
 import { recomputeLoan } from "@/lib/calc";
 import { ensureProgramAndChecklist } from "@/lib/checklist-seed";
 import { syncLoanToDashboard } from "@/lib/google/dashboard";
-import { sheetsConfigured, appendSheetRow } from "@/lib/google/sheets";
+import { sheetsConfigured, appendSheetRow, LOAN_TRACKER_SHEET_ID } from "@/lib/google/sheets";
 import {
   driveConfigured,
   findDealFolderByStreet,
@@ -15,10 +15,6 @@ import {
   renameDriveFile,
 } from "@/lib/google/drive";
 import { logEvent } from "@/lib/audit";
-
-/** The org "Loan Number Tracker" sheet ([Address, Loan Number] rows). */
-const LOAN_TRACKER_SHEET_ID =
-  process.env.GOOGLE_LOAN_TRACKER_SHEET_ID || "1FLrQZqFAJ7v-8cZeT3EGTPJ_Vut6JLPp_rNSXwEbm4Y";
 
 /** Split "123 Main St, City, ST 12345" into its parts (best-effort). */
 export function parseAddress(a: string): { street: string; city: string; state: string; zip: string } {

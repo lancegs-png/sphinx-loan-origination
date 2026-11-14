@@ -1,6 +1,5 @@
 "use server";
 
-import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -10,7 +9,7 @@ import {
   writeIntakeFields,
 } from "@/lib/fields";
 import { recomputeLoan } from "@/lib/calc";
-import { sheetsConfigured, appendSheetRow } from "@/lib/google/sheets";
+import { sheetsConfigured, appendSheetRow, LOAN_TRACKER_SHEET_ID } from "@/lib/google/sheets";
 import { syncLoanToDashboard } from "@/lib/google/dashboard";
 import { pushFieldsToSheet, reconcileLoanSheet } from "@/lib/google/sheet-sync";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
@@ -29,64 +28,6 @@ import {
   type QuoteField,
 } from "@/lib/ai/intake";
 import type { DealContact, InternalNote } from "@/lib/types";
-
-/** Org-level "Loan Tracker" sheet (Loan Number Tracker tab); overridable via env. */
-const LOAN_TRACKER_SHEET_ID =
-  process.env.GOOGLE_LOAN_TRACKER_SHEET_ID || "1FLrQZqFAJ7v-8cZeT3EGTPJ_Vut6JLPp_rNSXwEbm4Y";
-
-/**
- * Add Loan (R-UI-11): a lending-team user starts a new loan, which opens its chat.
- * Full conversational intake is a later phase (P6); M1 creates the deal shell and
- * seeds an opening message so the chat is ready.
- */
-export async function addLoan() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("lender_user_type")
-    .eq("id", user.id)
-    .single();
-
-  const { data: loan, error } = await supabase
-    .from("loans")
-    .insert({
-      created_by: user.id,
-      account_manager_id:
-        profile?.lender_user_type === "account_manager" ? user.id : null,
-      stage: "intake",
-    })
-    .select("id")
-    .single();
-
-  if (error || !loan) throw new Error(error?.message ?? "Failed to create loan");
-
-  await supabase.from("deal_participants").insert({
-    loan_id: loan.id,
-    user_id: user.id,
-    participant_role: "lending_team",
-    added_by: user.id,
-  });
-
-  await supabase.from("messages").insert({
-    loan_id: loan.id,
-    sender_kind: "ai",
-    sender_role: "ai",
-    body: "Let’s set up this loan. First — are you the borrower, or an originator (broker / referral partner)? And who is the borrower?",
-  });
-
-  await logEvent(createServiceRoleClient(), {
-    loanId: loan.id,
-    actorId: user.id,
-    eventType: "loan_created",
-  });
-
-  redirect(`/loans/${loan.id}`);
-}
 
 /**
  * Open a new DSCR deal end-to-end from a short form: the Drive folder (+ subfolders +
