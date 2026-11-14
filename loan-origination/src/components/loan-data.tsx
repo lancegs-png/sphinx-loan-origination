@@ -407,6 +407,7 @@ const COPYABLE_KEYS = new Set([
   "title_contact_email",
   "insurance_contact_email",
   "guarantor_email",
+  "guarantor_phone",
 ]);
 
 function FieldRow({
