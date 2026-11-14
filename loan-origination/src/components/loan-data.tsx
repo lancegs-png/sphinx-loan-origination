@@ -365,22 +365,20 @@ export function LoanData({
   return (
     <div className="flex flex-col gap-6">
       {!canEdit && <p className="text-xs text-muted">Read-only</p>}
+      {/* One continuous stack per column so collapsed cards pack straight up with no
+          cross-section gap (previously two separate grids left a hole under the shorter column). */}
       <div className="grid items-start gap-6 lg:grid-cols-2">
         <div className="flex flex-col gap-6">
           {sectionCard("loan")}
           {sectionCard("property")}
           {sectionCard("dscr_calc")}
+          {sectionCard("additional")}
         </div>
         <div className="flex flex-col gap-6">
           {sectionCard("trade")}
           {sectionCard("borrower")}
           {sectionCard("contact")}
           {sectionCard("closing")}
-        </div>
-      </div>
-      <div className="grid items-start gap-6 lg:grid-cols-2">
-        <div className="flex flex-col gap-6">{sectionCard("additional")}</div>
-        <div className="flex flex-col gap-6">
           {sectionCard("data_tape")}
           {initialCard}
         </div>
