@@ -70,7 +70,7 @@ export function DealView({
             <button className="btn btn-ghost text-sm">Sign out</button>
           </form>
         </div>
-        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2">
+        <div className="mt-3 flex flex-wrap items-center justify-center gap-x-3 gap-y-2">
           <h1 className="text-xl font-bold text-fg">
             {loan.property_address ?? loan.loan_number ?? loan.opportunity_number}
           </h1>

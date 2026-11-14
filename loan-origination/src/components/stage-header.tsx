@@ -52,10 +52,10 @@ export function StageHeader({
   }
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
+    <div className="flex flex-col items-center gap-3">
       <StageBar currentStage={stage} />
       {canEdit && (
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+        <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2">
           <label className="flex items-center gap-2 text-sm text-muted">
             <span className="font-medium">Stage</span>
             <select
