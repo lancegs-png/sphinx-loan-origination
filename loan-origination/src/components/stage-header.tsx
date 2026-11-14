@@ -52,10 +52,12 @@ export function StageHeader({
   }
 
   return (
-    <div className="flex flex-col items-center gap-3">
+    <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-x-4 gap-y-3">
+      {/* Left spacer keeps the stage bar centered while the controls sit far right. */}
+      <span aria-hidden />
       <StageBar currentStage={stage} />
-      {canEdit && (
-        <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2">
+      {canEdit ? (
+        <div className="flex flex-wrap items-center justify-end gap-x-5 gap-y-2">
           <label className="flex items-center gap-2 text-sm text-muted">
             <span className="font-medium">Stage</span>
             <select
@@ -89,6 +91,8 @@ export function StageHeader({
             </select>
           </label>
         </div>
+      ) : (
+        <span aria-hidden />
       )}
     </div>
   );
