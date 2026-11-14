@@ -401,6 +401,14 @@ export function LoanData({
 }
 
 /** One dense spreadsheet-style row: a label cell on the left, the value/editor on the right. */
+// Fields that get a one-click copy button on the right of their value cell.
+const COPYABLE_KEYS = new Set([
+  "property_address",
+  "title_contact_email",
+  "insurance_contact_email",
+  "guarantor_email",
+]);
+
 function FieldRow({
   def,
   cell,
@@ -422,6 +430,8 @@ function FieldRow({
   const calculated = def.source === "calculated";
   const current = str(cell?.current);
   const showLock = canEdit && isLender && def.verifiable && LOCKABLE_KEYS.has(def.key);
+  // The value to copy (only for copyable fields that actually have a value).
+  const copy = COPYABLE_KEYS.has(def.key) && current ? current : undefined;
 
   // Term sheet / commitment letter dates are auto-stamped when the document is
   // generated (read-only here) and reflect the most recent generation. Until the first
@@ -439,7 +449,7 @@ function FieldRow({
   // Calculated or read-only viewer: label | value.
   if (calculated || !canEdit) {
     return (
-      <Row label={def.label} badge={calculated ? "auto" : undefined}>
+      <Row label={def.label} badge={calculated ? "auto" : undefined} copy={copy}>
         <span className="block truncate px-2 py-1.5 text-sm text-fg">{fmtDisplay(def, current)}</span>
       </Row>
     );
@@ -451,13 +461,13 @@ function FieldRow({
   if (def.verifiable && isLender) {
     if (singleValue) {
       return (
-        <Row label={def.label} locked={locked} onLock={() => onLock(!locked)} showLock={showLock}>
+        <Row label={def.label} locked={locked} onLock={() => onLock(!locked)} showLock={showLock} copy={copy}>
           <CellInput def={def} base={current} disabled={locked} onCommit={(v) => onSave("verified", v)} />
         </Row>
       );
     }
     return (
-      <Row label={def.label} locked={locked} onLock={() => onLock(!locked)} showLock={showLock}>
+      <Row label={def.label} locked={locked} onLock={() => onLock(!locked)} showLock={showLock} copy={copy}>
         <div className="grid grid-cols-2 divide-x divide-line">
           <CellInput def={def} base={str(cell?.initial)} disabled={locked} placeholder="Initial" onCommit={(v) => onSave("initial", v)} />
           <CellInput def={def} base={str(cell?.verified)} disabled={locked} placeholder="Verified" onCommit={(v) => onSave("verified", v)} />
@@ -468,7 +478,7 @@ function FieldRow({
 
   // Editable single value.
   return (
-    <Row label={def.label} locked={locked}>
+    <Row label={def.label} locked={locked} copy={copy}>
       <CellInput def={def} base={str(cell?.initial)} disabled={locked} onCommit={(v) => onSave("initial", v)} />
     </Row>
   );
@@ -481,6 +491,7 @@ function Row({
   locked,
   onLock,
   showLock,
+  copy,
 }: {
   label: string;
   children: ReactNode;
@@ -488,6 +499,7 @@ function Row({
   locked?: boolean;
   onLock?: () => void;
   showLock?: boolean;
+  copy?: string;
 }) {
   return (
     <div className="grid grid-cols-[42%_1fr] items-stretch">
@@ -511,8 +523,47 @@ function Row({
           </button>
         )}
       </div>
-      <div className="min-w-0">{children}</div>
+      <div className="relative min-w-0">
+        {/* Keep the value clear of the copy button so long emails/addresses don't run under it. */}
+        <div className={copy ? "pr-8" : undefined}>{children}</div>
+        {copy && <CopyButton value={copy} />}
+      </div>
     </div>
+  );
+}
+
+/** Small clipboard button pinned to the right of a value cell; shows a check briefly on copy. */
+function CopyButton({ value }: { value: string }) {
+  const [copied, setCopied] = useState(false);
+  async function doCopy(e: React.MouseEvent) {
+    e.stopPropagation();
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    } catch {
+      /* clipboard unavailable — ignore */
+    }
+  }
+  return (
+    <button
+      type="button"
+      onClick={doCopy}
+      title={copied ? "Copied" : "Copy"}
+      aria-label={`Copy ${value}`}
+      className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-1 text-muted transition-colors hover:bg-surface-2 hover:text-fg"
+    >
+      {copied ? (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden style={{ color: "var(--status-cleared, #16a34a)" }}>
+          <path d="M20 6 9 17l-5-5" />
+        </svg>
+      ) : (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <rect x="9" y="9" width="11" height="11" rx="2" />
+          <path d="M5 15V5a2 2 0 0 1 2-2h10" />
+        </svg>
+      )}
+    </button>
   );
 }
 
