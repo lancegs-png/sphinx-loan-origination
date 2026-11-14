@@ -45,13 +45,26 @@ export async function POST(req: Request) {
     .maybeSingle();
   if (!loan) return Response.json({ ok: false, error: "loan not found" }, { status: 404 });
 
+  // kind controls which value column(s) to write. Default "initial"; "both" also writes
+  // verified_value so the result is authoritative (current = verified ?? initial) — used
+  // when correcting a value that an existing verified_value would otherwise shadow.
+  const kind = String(body.kind ?? "initial");
+  const writeInitial = kind === "initial" || kind === "both";
+  const writeVerified = kind === "verified" || kind === "both";
+
   const applied: string[] = [];
   for (const [rawKey, value] of Object.entries(fields)) {
     if (value === undefined) continue;
     const [key, idxStr] = rawKey.split("#");
     const idx = idxStr ? Number(idxStr) : 1;
-    const { error } = await upsertFieldValue(admin, { loanId: loan.id, key, idx, valueKind: "initial", value });
-    if (error) return Response.json({ ok: false, error: `${rawKey}: ${error.message}` }, { status: 500 });
+    if (writeInitial) {
+      const { error } = await upsertFieldValue(admin, { loanId: loan.id, key, idx, valueKind: "initial", value });
+      if (error) return Response.json({ ok: false, error: `${rawKey}: ${error.message}` }, { status: 500 });
+    }
+    if (writeVerified) {
+      const { error } = await upsertFieldValue(admin, { loanId: loan.id, key, idx, valueKind: "verified", value });
+      if (error) return Response.json({ ok: false, error: `${rawKey} (verified): ${error.message}` }, { status: 500 });
+    }
     applied.push(rawKey);
   }
 

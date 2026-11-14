@@ -34,7 +34,7 @@ export async function POST(req: Request) {
   if (action === "list") {
     const { data, error } = await admin
       .from("loans")
-      .select("id,loan_number,opportunity_number,property_address,stage,status,created_at")
+      .select("id,loan_number,opportunity_number,property_address,borrower_name,stage,status,created_at")
       .order("created_at", { ascending: true });
     if (error) return new Response(error.message, { status: 500 });
     return Response.json({ ok: true, count: data?.length ?? 0, loans: data ?? [] });
