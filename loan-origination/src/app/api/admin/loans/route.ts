@@ -53,6 +53,23 @@ export async function POST(req: Request) {
     return Response.json({ ok: true, updated: updated?.length ?? 0, status, loans: updated ?? [] });
   }
 
+  if (action === "field-scan") {
+    // Return each loan's current value for one field (verified ?? initial), idx 1, with the
+    // loan number — for auditing/backfilling a specific field across the book.
+    const fieldKey = String(body.fieldKey ?? "").trim();
+    if (!fieldKey) return new Response("Missing fieldKey", { status: 400 });
+    const [{ data: fvs, error }, { data: loans }] = await Promise.all([
+      admin.from("loan_field_values").select("loan_id,initial_value,verified_value").eq("field_key", fieldKey).eq("idx", 1),
+      admin.from("loans").select("id,loan_number,opportunity_number"),
+    ]);
+    if (error) return new Response(error.message, { status: 500 });
+    const refById = new Map((loans ?? []).map((l) => [l.id, l.loan_number ?? l.opportunity_number]));
+    const rows = (fvs ?? [])
+      .map((r) => ({ loan_id: r.loan_id, ref: refById.get(r.loan_id) ?? null, value: r.verified_value ?? r.initial_value ?? null }))
+      .filter((r) => r.value != null && r.value !== "");
+    return Response.json({ ok: true, field: fieldKey, count: rows.length, rows });
+  }
+
   if (action === "delete") {
     const ids = Array.isArray(body.ids) ? body.ids.map(String).filter(Boolean) : [];
     if (ids.length === 0) return new Response("No ids provided", { status: 400 });
