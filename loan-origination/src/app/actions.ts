@@ -532,10 +532,10 @@ const US_STATES = new Set([
   "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV",
   "WI", "WY", "DC",
 ]);
-// Text fields kept verbatim (acronyms / IDs / legal entity names), never title-cased.
-// Entity names often carry intentional capitalization (e.g. "HHH Rentals 4 LLC"), so they
-// are stored exactly as entered.
-const SKIP_NORMALIZE = new Set(["loan_type", "entity_ein", "servicer_id", "package_tracking", "borrower_entity"]);
+// Text fields kept verbatim (acronyms / IDs), never title-cased.
+const SKIP_NORMALIZE = new Set(["loan_type", "entity_ein", "servicer_id", "package_tracking"]);
+// Fields stored fully uppercased — entity / legal names (e.g. "HHH RENTALS 4 LLC").
+const UPPERCASE_FIELDS = new Set(["borrower_entity"]);
 
 function titleCaseWord(w: string): string {
   const up = w.toUpperCase();
@@ -549,6 +549,7 @@ function normalizeFieldValue(key: string, type: string, value: string): string {
   const t = value.trim();
   if (!t) return t;
   if (key.includes("email")) return t.toLowerCase();
+  if (UPPERCASE_FIELDS.has(key)) return t.toUpperCase();
   if (SKIP_NORMALIZE.has(key)) return t;
   return t.split(/(\s+)/).map((tok) => (/\s+/.test(tok) ? tok : titleCaseWord(tok))).join("");
 }
