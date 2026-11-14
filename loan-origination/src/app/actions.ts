@@ -532,8 +532,10 @@ const US_STATES = new Set([
   "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV",
   "WI", "WY", "DC",
 ]);
-// Text fields kept verbatim (acronyms / IDs), never title-cased.
-const SKIP_NORMALIZE = new Set(["loan_type", "entity_ein", "servicer_id", "package_tracking"]);
+// Text fields kept verbatim (acronyms / IDs / legal entity names), never title-cased.
+// Entity names often carry intentional capitalization (e.g. "HHH Rentals 4 LLC"), so they
+// are stored exactly as entered.
+const SKIP_NORMALIZE = new Set(["loan_type", "entity_ein", "servicer_id", "package_tracking", "borrower_entity"]);
 
 function titleCaseWord(w: string): string {
   const up = w.toUpperCase();
