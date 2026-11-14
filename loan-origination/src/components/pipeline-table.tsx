@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { STAGES, stageLabel, stageIndex } from "@/lib/stages";
 import type { Loan } from "@/lib/types";
 
@@ -65,6 +66,19 @@ export function PipelineTable({
   const [type, setType] = useState("");
   const [visible, setVisible] = useState<Record<ColKey, boolean>>(DEFAULT_VISIBLE);
   const colMenuRef = useRef<HTMLDetailsElement>(null);
+  const router = useRouter();
+
+  // Navigate to a loan when its row is clicked. Ignore clicks that are really a text
+  // selection, and honor cmd/ctrl-click (and middle-click, via the row's anchor) to open
+  // in a new tab.
+  function openLoan(e: React.MouseEvent, loanId: string) {
+    if (window.getSelection()?.toString()) return; // user is selecting text, not navigating
+    if (e.metaKey || e.ctrlKey) {
+      window.open(`/loans/${loanId}`, "_blank", "noopener");
+      return;
+    }
+    router.push(`/loans/${loanId}`);
+  }
 
   // Close the column menu on outside click / Escape.
   useEffect(() => {
@@ -249,11 +263,13 @@ export function PipelineTable({
                 sorted.map((l) => (
                   <tr
                     key={l.id}
-                    className="group border-b border-line last:border-0 transition-colors hover:bg-surface-2/60"
+                    onClick={(e) => openLoan(e, l.id)}
+                    className="group cursor-pointer border-b border-line last:border-0 transition-colors hover:bg-surface-2/60"
                   >
                     <td className="px-5 py-3.5">
                       <Link
                         href={`/loans/${l.id}`}
+                        onClick={(e) => e.stopPropagation()}
                         className="font-semibold text-navy decoration-gold/50 underline-offset-2 group-hover:underline"
                       >
                         {l.loan_number ?? l.opportunity_number}
