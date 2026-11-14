@@ -270,13 +270,13 @@ export function PipelineTable({
                             const [street, rest] = addressLines(l.property_address);
                             return (
                               <span className="text-fg">
-                                <span className="block">{street}</span>
+                                <span className="block whitespace-nowrap">{street}</span>
                                 {rest && <span className="block whitespace-nowrap">{rest}</span>}
                               </span>
                             );
                           })()}
-                        {c.key === "borrower" && <span className="text-fg">{l.borrower_name ?? "—"}</span>}
-                        {c.key === "guarantor" && <span className="text-fg">{guarantors[l.id] ?? "—"}</span>}
+                        {c.key === "borrower" && <span className="block whitespace-nowrap text-fg">{l.borrower_name ?? "—"}</span>}
+                        {c.key === "guarantor" && <span className="block whitespace-nowrap text-fg">{guarantors[l.id] ?? "—"}</span>}
                         {c.key === "amount" && (
                           <span className="font-medium tabular-nums text-fg">{money(l.loan_amount)}</span>
                         )}

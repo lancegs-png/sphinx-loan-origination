@@ -21,7 +21,7 @@ export function PipelineHome({
   const activeLoans = loans.filter((l) => !hidden.has(l.status));
   return (
     <AppShell email={profile.email} nav={navFor(profile)}>
-      <main className="mx-auto max-w-6xl px-6 py-9 lg:px-10">
+      <main className="mx-auto max-w-[90rem] px-6 py-9 lg:px-10">
         <div className="mb-6 flex items-end justify-between gap-4">
           <div>
             <h1 className="text-[1.75rem] font-bold text-fg">Pipeline</h1>
