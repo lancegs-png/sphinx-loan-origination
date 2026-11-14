@@ -19,6 +19,7 @@ import { answerLoanQuestion } from "@/lib/ai/record-keeper";
 import { loadLoanChecklist } from "@/lib/checklist";
 import { openDeal } from "@/lib/loans/open-deal";
 import { STAGES } from "@/lib/stages";
+import { isLoanStatus } from "@/lib/status";
 import {
   runIntakeTurn,
   detectLoanTypeKey,
@@ -676,6 +677,44 @@ export async function setLoanStage(input: {
     eventType: "stage_changed",
     isInternal: true,
     payload: { old: loan.stage, new: input.stage },
+  });
+  return { ok: true };
+}
+
+/**
+ * Set a loan's lifecycle status (active / on_hold / withdrawn / declined / archived) — the
+ * disposition for a deal that isn't moving forward. Lending-team only; logs the change.
+ * "archived" also drops the loan from the pipeline list (see src/app/page.tsx).
+ */
+export async function setLoanStatus(input: {
+  loanId: string;
+  status: string;
+}): Promise<{ ok: boolean; error?: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+
+  const [{ data: me }, { data: loan }] = await Promise.all([
+    supabase.from("profiles").select("lender_user_type").eq("id", user.id).single(),
+    supabase.from("loans").select("status").eq("id", input.loanId).single(),
+  ]);
+  if (!me?.lender_user_type) return { ok: false, error: "Lending team only." };
+  if (!isLoanStatus(input.status)) return { ok: false, error: "Unknown status." };
+  if (!loan) return { ok: false, error: "No access to this loan." };
+  if (loan.status === input.status) return { ok: true };
+
+  const admin = createServiceRoleClient();
+  const { error } = await admin.from("loans").update({ status: input.status }).eq("id", input.loanId);
+  if (error) return { ok: false, error: error.message };
+
+  await logEvent(admin, {
+    loanId: input.loanId,
+    actorId: user.id,
+    eventType: "status_changed",
+    isInternal: true,
+    payload: { old: loan.status, new: input.status },
   });
   return { ok: true };
 }

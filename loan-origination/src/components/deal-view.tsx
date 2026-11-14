@@ -86,7 +86,7 @@ export function DealView({
           <span className="text-sm text-muted">Close {fmtCloseDate(loan.closing_date)}</span>
         </div>
         <div className="mt-4">
-          <StageHeader loanId={loan.id} currentStage={loan.stage} canEdit={isLender} />
+          <StageHeader loanId={loan.id} currentStage={loan.stage} currentStatus={loan.status} canEdit={isLender} />
         </div>
       </header>
 
