@@ -101,6 +101,13 @@ export async function GET(
   if (DOCX_TEMPLATES.has(def.id)) {
     const data = await buildTemplateData(supabase, id);
 
+    // ACH form: the "Borrower Email" / "Borrower Phone" tags are the signer's contact, so
+    // fill them from the guarantor's email and phone rather than the borrower_* fields.
+    if (def.id === "ach_form") {
+      data.borrower_email = data.guarantor_email ?? "";
+      data.borrower_phone = data.guarantor_phone ?? "";
+    }
+
     // Preferred path: render from the template's Google Doc (per DOC_TEMPLATE_ENV) — copy,
     // replace {{tags}}, export PDF/Word, all inside the org's own Workspace (works on
     // Vercel, no LibreOffice). Templates whose env var is unset fall through to the bundled
