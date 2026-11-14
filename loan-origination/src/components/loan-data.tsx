@@ -675,6 +675,9 @@ function CellInput({
   const prefix = def.type === "currency" ? "$" : null;
   const suffix = def.type === "percent" ? "%" : null;
 
+  // For a percent, size the input to its content so the "%" sits right after the number
+  // instead of floating at the far right of the cell.
+  const pctWidth = suffix ? `${Math.max((value || placeholder || "").length, 2) + 1}ch` : undefined;
   const input = (
     <input
       type={inputType}
@@ -690,9 +693,10 @@ function CellInput({
         focusedRef.current = false;
         commit();
       }}
-      className={`w-full bg-transparent py-1.5 text-sm text-fg outline-none disabled:opacity-50 ${
+      style={suffix ? { width: pctWidth } : undefined}
+      className={`bg-transparent py-1.5 text-sm text-fg outline-none disabled:opacity-50 ${
         prefix ? "pl-1" : "pl-2"
-      } ${suffix ? "pr-1" : "pr-2"}`}
+      } ${suffix ? "pr-0" : "w-full pr-2"}`}
     />
   );
 
@@ -721,7 +725,7 @@ function CellInput({
     <div className="flex items-center focus-within:bg-gold/5">
       {prefix && <span className="pl-2 text-sm text-muted">{prefix}</span>}
       {input}
-      {suffix && <span className="pr-2 text-sm text-muted">{suffix}</span>}
+      {suffix && <span className="pl-0 pr-2 text-sm text-muted">{suffix}</span>}
     </div>
   );
 }
