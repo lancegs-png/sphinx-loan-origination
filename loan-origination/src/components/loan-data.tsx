@@ -365,7 +365,6 @@ export function LoanData({
   return (
     <div className="flex flex-col gap-6">
       {!canEdit && <p className="text-xs text-muted">Read-only</p>}
-      {canEdit && <SheetSync loanId={loan.id} />}
       <div className="grid items-start gap-6 lg:grid-cols-2">
         <div className="flex flex-col gap-6">
           {sectionCard("loan")}
@@ -386,6 +385,12 @@ export function LoanData({
           {initialCard}
         </div>
       </div>
+      {canEdit && (
+        <div className="mt-2 flex flex-wrap items-center justify-end gap-x-3 gap-y-2 border-t border-line pt-4">
+          <span className="text-xs text-faint">Edits sync automatically — use this only to force a full re-sync.</span>
+          <SheetSync loanId={loan.id} />
+        </div>
+      )}
       {status && (
         <div
           role="status"
@@ -745,7 +750,7 @@ function SheetSync({ loanId }: { loanId: string }) {
   return (
     <div className="flex flex-wrap items-center gap-2 text-xs">
       <button onClick={sync} disabled={busy} className="btn btn-secondary text-xs">
-        {busy ? "Syncing…" : "Sync to Google Sheet"}
+        {busy ? "Syncing…" : "Re-sync all to Sheet"}
       </button>
       {url && (
         <a href={url} target="_blank" rel="noopener noreferrer" className="text-navy underline underline-offset-2">
