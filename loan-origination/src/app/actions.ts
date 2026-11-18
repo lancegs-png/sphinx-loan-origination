@@ -13,6 +13,7 @@ import { sheetsConfigured, appendSheetRow, LOAN_TRACKER_SHEET_ID } from "@/lib/g
 import { syncLoanToDashboard } from "@/lib/google/dashboard";
 import { pushFieldsToSheet, reconcileLoanSheet } from "@/lib/google/sheet-sync";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
+import { generateTempPassword, resetTempPassword } from "@/lib/users";
 import { logEvent } from "@/lib/audit";
 import { answerLoanQuestion } from "@/lib/ai/record-keeper";
 import { loadLoanChecklist } from "@/lib/checklist";
@@ -942,7 +943,7 @@ export async function addUser(input: {
   if (!email) return { ok: false, error: "Email required." };
 
   const admin = createServiceRoleClient();
-  const tempPassword = `Tmp-${Math.random().toString(36).slice(2, 10)}${Math.floor(Math.random() * 90 + 10)}`;
+  const tempPassword = generateTempPassword();
 
   const { data: created, error: createErr } = await admin.auth.admin.createUser({
     email,
@@ -961,6 +962,30 @@ export async function addUser(input: {
   if (error) return { ok: false, error: error.message };
 
   return { ok: true, tempPassword };
+}
+
+/**
+ * Admin: reset an existing user's password to a fresh one-time temp password. The app sends
+ * no email, so the returned password is shown once for the admin to hand over.
+ */
+export async function resetUserPassword(input: {
+  userId: string;
+}): Promise<{ ok: boolean; error?: string; tempPassword?: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+  const { data: me } = await supabase
+    .from("profiles")
+    .select("lender_user_type")
+    .eq("id", user.id)
+    .single();
+  if (me?.lender_user_type !== "admin") return { ok: false, error: "Admins only." };
+
+  const res = await resetTempPassword(createServiceRoleClient(), { userId: input.userId });
+  if (!res.ok) return { ok: false, error: res.error };
+  return { ok: true, tempPassword: res.tempPassword };
 }
 
 export type ChecklistItemInput = {

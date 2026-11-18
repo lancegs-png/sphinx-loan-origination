@@ -16,17 +16,45 @@ import {
 } from "@/lib/google/drive";
 import { logEvent } from "@/lib/audit";
 
-/** Split "123 Main St, City, ST 12345" into its parts (best-effort). */
+/**
+ * Split a free-text US address into its parts (best-effort). Handles the common shapes:
+ *   "123 Main St, City, ST 12345"   (standard)
+ *   "123 Main St, City ST 12345"    (comma only after the street)
+ *   "123 Main St City, ST 12345"    (comma before the state)
+ *   "123 Main St, City, ST"         (no ZIP)
+ * The trailing "ST ZIP" / "ZIP" is always pulled off the end first, so State and Zip can
+ * never land in City; the remainder is then split on commas into street + city. When the
+ * street and city are run together with no comma between them they can't be told apart, so
+ * the city text stays with the street rather than being guessed — the full address still
+ * reads correctly and City can be filled in by hand.
+ */
 export function parseAddress(a: string): { street: string; city: string; state: string; zip: string } {
-  const parts = a.split(",").map((s) => s.trim()).filter(Boolean);
+  const s = a.trim();
   let state = "";
   let zip = "";
-  const m = parts.slice(2).join(" ").match(/([A-Za-z]{2})\s+(\d{5})(?:-\d{4})?/);
-  if (m) {
-    state = m[1].toUpperCase();
-    zip = m[2];
+  let rest = s;
+  // 1. Pull the trailing "ST 12345" (ZIP may be 4 digits for leading-zero NE ZIPs, +4 optional),
+  //    separated from the rest by a comma or space.
+  const stateZip = s.match(/^(.*?)[,\s]+([A-Za-z]{2})\s+(\d{4,5})(?:-\d{4})?\s*$/);
+  if (stateZip) {
+    rest = stateZip[1];
+    state = stateZip[2].toUpperCase();
+    zip = stateZip[3];
+  } else {
+    // ...or a bare trailing 5-digit ZIP with no state.
+    const zipOnly = s.match(/^(.*?)[,\s]+(\d{5})(?:-\d{4})?\s*$/);
+    if (zipOnly) {
+      rest = zipOnly[1];
+      zip = zipOnly[2];
+    }
   }
-  return { street: parts[0] ?? "", city: parts[1] ?? "", state, zip };
+  // 2. Split what's left on commas: street first, city is everything after it.
+  const parts = rest.split(",").map((p) => p.trim()).filter(Boolean);
+  // A bare 2-letter trailing group is the state (a ZIP-less "..., City, TX").
+  if (!state && parts.length >= 2 && /^[A-Za-z]{2}$/.test(parts[parts.length - 1])) {
+    state = parts.pop()!.toUpperCase();
+  }
+  return { street: parts[0] ?? "", city: parts.slice(1).join(", "), state, zip };
 }
 
 export type OpenDealInput = {

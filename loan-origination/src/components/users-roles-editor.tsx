@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { setUserType, addUser, type UserType } from "@/app/actions";
+import { setUserType, addUser, resetUserPassword, type UserType } from "@/app/actions";
 
 export type UserRow = {
   id: string;
@@ -178,12 +178,27 @@ function UserRowEditor({
 }) {
   const [type, setType] = useState<UserType>(typeOf(user));
   const [busy, setBusy] = useState(false);
+  const [resetting, setResetting] = useState(false);
+  const [temp, setTemp] = useState<string | null>(null);
 
   async function save() {
     setBusy(true);
     const res = await setUserType({ userId: user.id, userType: type });
     setBusy(false);
     onSaved(res.ok ? "Saved." : res.error ?? "Save failed.");
+  }
+
+  async function reset() {
+    setResetting(true);
+    setTemp(null);
+    const res = await resetUserPassword({ userId: user.id });
+    setResetting(false);
+    if (res.ok) {
+      setTemp(res.tempPassword ?? null);
+      onSaved(`New temporary password set for ${user.email}.`);
+    } else {
+      onSaved(res.error ?? "Reset failed.");
+    }
   }
 
   return (
@@ -213,7 +228,15 @@ function UserRowEditor({
         <button onClick={save} disabled={busy} className="btn btn-secondary text-sm">
           {busy ? "Saving…" : "Save"}
         </button>
+        <button onClick={reset} disabled={resetting} className="btn btn-secondary text-sm">
+          {resetting ? "Resetting…" : "Reset password"}
+        </button>
       </div>
+      {temp && (
+        <p className="text-sm text-fg">
+          Temporary password (share once): <span className="font-mono font-medium">{temp}</span>
+        </p>
+      )}
     </li>
   );
 }
