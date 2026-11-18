@@ -106,6 +106,23 @@ export type ChecklistItem = {
   notes: string | null;
 };
 
+/** One stage-checklist task for a loan, with its completion state (StageTaskGroup → tasks). */
+export type StageTask = {
+  id: string;
+  label: string;
+  done: boolean;
+  note: string | null;
+  completedBy: string | null; // display name of who last completed it
+  completedAt: string | null; // ISO timestamp
+};
+
+/** Stage-checklist tasks for a loan, grouped by pipeline bucket. */
+export type StageTaskGroup = {
+  bucketKey: string;
+  bucketLabel: string;
+  tasks: StageTask[];
+};
+
 export type LoanDocument = {
   id: string;
   checklist_item_id: string | null;

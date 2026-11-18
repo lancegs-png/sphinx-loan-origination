@@ -11,6 +11,7 @@ import type {
   LoanDocument,
   Message,
   Participant,
+  StageTaskGroup,
 } from "@/lib/types";
 
 /** Format a stored YYYY-MM-DD date as MM/DD/YYYY (no timezone shift); "—" when empty. */
@@ -32,6 +33,7 @@ export function DealView({
   fieldDefs,
   fieldValues,
   checklist,
+  stageTasks,
   documents,
   activity,
   fieldLabels,
@@ -48,6 +50,7 @@ export function DealView({
   fieldDefs: FieldDef[];
   fieldValues: FieldValues;
   checklist: ChecklistItem[];
+  stageTasks: StageTaskGroup[];
   documents: LoanDocument[];
   activity: ActivityEvent[];
   fieldLabels: Record<string, string>;
@@ -102,6 +105,7 @@ export function DealView({
         fieldDefs={fieldDefs}
         fieldValues={fieldValues}
         checklist={checklist}
+        stageTasks={stageTasks}
         documents={documents}
         activity={activity}
         fieldLabels={fieldLabels}

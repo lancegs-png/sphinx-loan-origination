@@ -55,6 +55,8 @@ export function describeEvent(e: ActivityEvent, labelFor?: (key: string) => stri
       return "Quote posted to borrower";
     case "checklist_status":
       return `Checklist status: ${fmtVal(p.old)} → ${fmtVal(p.new)}`;
+    case "stage_task_status":
+      return `Checklist task ${p.done ? "completed" : "reopened"}${p.label ? `: ${fmtVal(p.label)}` : ""}`;
     case "stage_changed":
       return `Stage: ${stageLabel(String(p.old ?? ""))} → ${stageLabel(String(p.new ?? ""))}`;
     case "sheet_synced":

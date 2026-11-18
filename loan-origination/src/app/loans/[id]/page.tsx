@@ -3,6 +3,7 @@ import { getSessionProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { loadFieldValues } from "@/lib/fields";
 import { loadLoanChecklist, loadLoanDocuments } from "@/lib/checklist";
+import { loadLoanStageTasks } from "@/lib/stage-tasks";
 import { loadLoanActivity, type ActivityEvent } from "@/lib/audit";
 import { DealView } from "@/components/deal-view";
 import type { FieldDef, InternalNote, Loan, Message, Participant } from "@/lib/types";
@@ -38,7 +39,7 @@ export default async function LoanPage({
   // The rest of the deal's data is independent (only the checklist needs the loan's
   // program), so fetch it in one parallel wave instead of ~8 sequential round-trips —
   // this is what makes page loads and refreshes (e.g. a stage change) feel snappy.
-  const [messagesRes, participantsRes, internalNotes, fieldDefsRes, fieldValues, checklist, documents, activity] =
+  const [messagesRes, participantsRes, internalNotes, fieldDefsRes, fieldValues, checklist, stageTasks, documents, activity] =
     await Promise.all([
       supabase.from("messages").select("*").eq("loan_id", id).order("created_at", { ascending: true }),
       supabase.from("deal_participants").select("*, profiles(*)").eq("loan_id", id),
@@ -56,6 +57,10 @@ export default async function LoanPage({
         .order("sort"),
       loadFieldValues(supabase, id), // RLS filters lender-only fields for borrowers
       loadLoanChecklist(supabase, id, typedLoan.program_id),
+      // Stage-task checklist is an internal-staff tab; skip the query for borrowers.
+      isLender
+        ? loadLoanStageTasks(supabase, id, typedLoan.program_id)
+        : Promise.resolve([] as Awaited<ReturnType<typeof loadLoanStageTasks>>),
       loadLoanDocuments(supabase, id),
       // Activity log is a lender-only tab; load it only for the lending team.
       isLender ? loadLoanActivity(supabase, id) : Promise.resolve([] as ActivityEvent[]),
@@ -85,6 +90,7 @@ export default async function LoanPage({
       fieldDefs={(fieldDefs as FieldDef[]) ?? []}
       fieldValues={fieldValues}
       checklist={checklist}
+      stageTasks={stageTasks}
       documents={documents}
       activity={activity}
       fieldLabels={fieldLabels}
