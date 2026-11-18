@@ -121,13 +121,13 @@ export function DealTabs({
 
   const tabs: { key: Tab; label: string; lenderOnly?: boolean }[] = [
     { key: "loan", label: "Loan Info" },
-    { key: "chat", label: "Chat" },
     { key: "documents", label: "Documents" },
     { key: "checklist", label: "Checklist", lenderOnly: true },
     { key: "people", label: "People" },
-    { key: "quote", label: "Quote", lenderOnly: true },
     { key: "templates", label: "Templates", lenderOnly: true },
-    { key: "notes", label: "Internal Notes", lenderOnly: true },
+    { key: "notes", label: "Notes", lenderOnly: true },
+    { key: "chat", label: "Chat" },
+    { key: "quote", label: "Quote", lenderOnly: true },
     { key: "activity", label: "Activity", lenderOnly: true },
   ];
 
