@@ -3,8 +3,11 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { publishInvestorPricing } from "@/app/actions";
+import { createClient } from "@/lib/supabase/client";
 import type { GeneralConfig, InvestorFamily } from "@/lib/pricing/general";
 import type { PricingPreview } from "@/lib/pricing/preview";
+
+const BUCKET = "loan-documents";
 
 type PublishedMeta = { effective: string | null; at: string; file: string | null } | undefined;
 
@@ -54,10 +57,36 @@ function InvestorCard({
     setPreview(null);
     setEngine(null);
     try {
-      const fd = new FormData();
-      fd.set("investor", investor.family);
-      fd.set("file", file);
-      const res = await fetch("/api/admin/pricing/parse", { method: "POST", body: fd });
+      // The sizer (Eastview is ~14MB) can't POST through the function — Vercel caps request
+      // bodies at 4.5MB. Upload the bytes straight to Storage via a signed URL, then hand the
+      // parse route just the storage path; it downloads + parses server-side and cleans up.
+      const signRes = await fetch("/api/admin/pricing/sign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fileName: file.name }),
+      });
+      const sign = await signRes.json();
+      if (!sign.ok) {
+        setErr(sign.error ?? "Could not start the upload.");
+        setBusy("idle");
+        return;
+      }
+      const supabase = createClient();
+      const { error: upErr } = await supabase.storage
+        .from(BUCKET)
+        .uploadToSignedUrl(sign.path, sign.token, file, {
+          contentType: file.type || "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        });
+      if (upErr) {
+        setErr(`Upload failed: ${upErr.message}`);
+        setBusy("idle");
+        return;
+      }
+      const res = await fetch("/api/admin/pricing/parse", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ investor: investor.family, storagePath: sign.path, fileName: file.name }),
+      });
       const json = await res.json();
       if (!json.ok) setErr(json.error ?? "Could not parse the file.");
       else {
