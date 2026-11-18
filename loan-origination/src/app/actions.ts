@@ -1021,6 +1021,65 @@ export async function setChecklistItemStatus(input: {
   return { ok: true };
 }
 
+// ---------- Per-loan stage-task checklist (customizable per program) ----------
+
+/**
+ * Toggle a stage-task's done state and/or its note for a loan (lending team only).
+ * Upserts the per-loan status row keyed by (loan_id, task_id), stamps who/when on
+ * completion, and logs an internal audit event when the done state actually changes.
+ */
+export async function setLoanTaskStatus(input: {
+  loanId: string;
+  taskId: string;
+  done?: boolean;
+  note?: string;
+}): Promise<{ ok: boolean; error?: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+
+  const { data: before } = await supabase
+    .from("loan_task_status")
+    .select("done")
+    .eq("loan_id", input.loanId)
+    .eq("task_id", input.taskId)
+    .maybeSingle();
+
+  const now = new Date().toISOString();
+  const row: Record<string, unknown> = { loan_id: input.loanId, task_id: input.taskId, updated_at: now };
+  if (input.done !== undefined) {
+    row.done = input.done;
+    row.completed_by = input.done ? user.id : null;
+    row.completed_at = input.done ? now : null;
+  }
+  if (input.note !== undefined) row.note = input.note.trim() || null;
+
+  const { error } = await supabase
+    .from("loan_task_status")
+    .upsert(row, { onConflict: "loan_id,task_id" });
+  if (error) return { ok: false, error: error.message };
+
+  if (input.done !== undefined && input.done !== (before?.done ?? false)) {
+    const { data: task } = await supabase
+      .from("program_stage_tasks")
+      .select("label")
+      .eq("id", input.taskId)
+      .maybeSingle();
+    const admin = createServiceRoleClient();
+    await admin.from("audit_events").insert({
+      loan_id: input.loanId,
+      actor_id: user.id,
+      actor_kind: "human",
+      event_type: "stage_task_status",
+      is_internal: true,
+      payload: { task_id: input.taskId, label: task?.label, done: input.done },
+    });
+  }
+  return { ok: true };
+}
+
 // ---------- Admin backend: document types, checklists, pricing, users ----------
 
 export async function saveDocumentType(input: {
@@ -1175,6 +1234,63 @@ export async function saveProgramChecklist(
       sort: i,
     }));
     const { error } = await supabase.from("program_checklist_items").insert(rows);
+    if (error) return { ok: false, error: error.message };
+  }
+  return { ok: true };
+}
+
+export type StageTaskInput = { id?: string; stageBucket: string; label: string };
+
+/**
+ * Admin: replace a program's stage-task checklist. Existing tasks (sent with their id) are
+ * updated in place so per-loan completion is preserved; new tasks are inserted; tasks the
+ * admin removed are deleted (cascading their per-loan status). `sort` is assigned per bucket
+ * in the order received. Relies on RLS for the admin check.
+ */
+export async function saveProgramStageTasks(
+  programId: string,
+  tasks: StageTaskInput[],
+): Promise<{ ok: boolean; error?: string }> {
+  const supabase = await createClient();
+
+  const { data: existing } = await supabase
+    .from("program_stage_tasks")
+    .select("id")
+    .eq("program_id", programId);
+  const existingIds = new Set((existing ?? []).map((r) => r.id as string));
+
+  const counters: Record<string, number> = {};
+  const keep = new Set<string>();
+  const updates: { id: string; stage_bucket: string; label: string; sort: number }[] = [];
+  const inserts: { program_id: string; stage_bucket: string; label: string; sort: number }[] = [];
+
+  for (const t of tasks) {
+    const label = t.label.trim();
+    if (!label) continue;
+    const sort = counters[t.stageBucket] ?? 0;
+    counters[t.stageBucket] = sort + 1;
+    if (t.id && existingIds.has(t.id)) {
+      keep.add(t.id);
+      updates.push({ id: t.id, stage_bucket: t.stageBucket, label, sort });
+    } else {
+      inserts.push({ program_id: programId, stage_bucket: t.stageBucket, label, sort });
+    }
+  }
+
+  const toDelete = [...existingIds].filter((id) => !keep.has(id));
+  if (toDelete.length) {
+    const { error } = await supabase.from("program_stage_tasks").delete().in("id", toDelete);
+    if (error) return { ok: false, error: error.message };
+  }
+  for (const u of updates) {
+    const { error } = await supabase
+      .from("program_stage_tasks")
+      .update({ stage_bucket: u.stage_bucket, label: u.label, sort: u.sort })
+      .eq("id", u.id);
+    if (error) return { ok: false, error: error.message };
+  }
+  if (inserts.length) {
+    const { error } = await supabase.from("program_stage_tasks").insert(inserts);
     if (error) return { ok: false, error: error.message };
   }
   return { ok: true };

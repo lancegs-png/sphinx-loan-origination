@@ -13,6 +13,7 @@ const PanelLoading = () => <div className="p-4 text-sm text-muted">Loading…</d
 const QuotePanel = dynamic(() => import("./quote-panel").then((m) => m.QuotePanel), { loading: PanelLoading });
 const DualQuotePanel = dynamic(() => import("./dual-quote-panel").then((m) => m.DualQuotePanel), { loading: PanelLoading });
 const DocumentsPanel = dynamic(() => import("./documents-panel").then((m) => m.DocumentsPanel), { loading: PanelLoading });
+const ChecklistPanel = dynamic(() => import("./checklist-panel").then((m) => m.ChecklistPanel), { loading: PanelLoading });
 const TemplatesPanel = dynamic(() => import("./templates-panel").then((m) => m.TemplatesPanel), { loading: PanelLoading });
 const PeoplePanel = dynamic(() => import("./people-panel").then((m) => m.PeoplePanel), { loading: PanelLoading });
 const NotesPanel = dynamic(() => import("./notes-panel").then((m) => m.NotesPanel), { loading: PanelLoading });
@@ -28,9 +29,10 @@ import type {
   LoanDocument,
   Message,
   Participant,
+  StageTaskGroup,
 } from "@/lib/types";
 
-type Tab = "loan" | "chat" | "documents" | "people" | "quote" | "templates" | "notes" | "activity";
+type Tab = "loan" | "chat" | "documents" | "checklist" | "people" | "quote" | "templates" | "notes" | "activity";
 
 const NAV_COLLAPSE_KEY = "sphinx.deal.nav.collapsed";
 
@@ -44,6 +46,7 @@ const TAB_ICON: Record<Tab, ReactNode> = {
   loan: svg(<><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6" /><path d="M8 13h8M8 17h5" /></>),
   chat: svg(<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />),
   documents: svg(<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />),
+  checklist: svg(<><polyline points="9 11 12 14 22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" /></>),
   people: svg(<><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></>),
   quote: svg(<><line x1="12" y1="1" x2="12" y2="23" /><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" /></>),
   templates: svg(<><rect x="3" y="3" width="13" height="13" rx="2" /><path d="M8 21h11a2 2 0 0 0 2-2V8" /></>),
@@ -69,6 +72,7 @@ export function DealTabs({
   fieldDefs,
   fieldValues,
   checklist,
+  stageTasks,
   documents,
   activity,
   fieldLabels,
@@ -85,6 +89,7 @@ export function DealTabs({
   fieldDefs: FieldDef[];
   fieldValues: FieldValues;
   checklist: ChecklistItem[];
+  stageTasks: StageTaskGroup[];
   documents: LoanDocument[];
   activity: ActivityEvent[];
   fieldLabels: Record<string, string>;
@@ -118,6 +123,7 @@ export function DealTabs({
     { key: "loan", label: "Loan Info" },
     { key: "chat", label: "Chat" },
     { key: "documents", label: "Documents" },
+    { key: "checklist", label: "Checklist", lenderOnly: true },
     { key: "people", label: "People" },
     { key: "quote", label: "Quote", lenderOnly: true },
     { key: "templates", label: "Templates", lenderOnly: true },
@@ -215,6 +221,15 @@ export function DealTabs({
                   documents={documents}
                   canEdit={isLender}
                   canGenerate={isLender && atProcessing}
+                />
+              )}
+
+              {tab === "checklist" && isLender && (
+                <ChecklistPanel
+                  loanId={loan.id}
+                  currentStage={loan.stage}
+                  groups={stageTasks}
+                  canEdit={isLender}
                 />
               )}
 

@@ -70,6 +70,9 @@ export function ProgramConfigEditor({
         <Link href={`/admin/programs/${programId}/checklist`} className="chip transition-colors hover:text-fg">
           Checklist
         </Link>
+        <Link href={`/admin/programs/${programId}/tasks`} className="chip transition-colors hover:text-fg">
+          Checklist Tasks
+        </Link>
         <Link href={`/admin/programs/${programId}/pricing`} className="chip transition-colors hover:text-fg">
           Pricing
         </Link>
