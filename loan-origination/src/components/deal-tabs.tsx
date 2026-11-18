@@ -11,6 +11,7 @@ import { LoanData } from "./loan-data";
 // stay eager.
 const PanelLoading = () => <div className="p-4 text-sm text-muted">Loading…</div>;
 const QuotePanel = dynamic(() => import("./quote-panel").then((m) => m.QuotePanel), { loading: PanelLoading });
+const DualQuotePanel = dynamic(() => import("./dual-quote-panel").then((m) => m.DualQuotePanel), { loading: PanelLoading });
 const DocumentsPanel = dynamic(() => import("./documents-panel").then((m) => m.DocumentsPanel), { loading: PanelLoading });
 const TemplatesPanel = dynamic(() => import("./templates-panel").then((m) => m.TemplatesPanel), { loading: PanelLoading });
 const PeoplePanel = dynamic(() => import("./people-panel").then((m) => m.PeoplePanel), { loading: PanelLoading });
@@ -227,7 +228,12 @@ export function DealTabs({
                 />
               )}
 
-              {tab === "quote" && isLender && <QuotePanel loan={loan} values={fieldValues} />}
+              {tab === "quote" && isLender &&
+                (/dscr/i.test(String(loan.loan_program ?? loan.loan_type ?? "")) ? (
+                  <DualQuotePanel loan={loan} values={fieldValues} />
+                ) : (
+                  <QuotePanel loan={loan} values={fieldValues} />
+                ))}
 
               {tab === "templates" && isLender && (
                 <TemplatesPanel

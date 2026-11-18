@@ -21,6 +21,7 @@ export default async function AdminHome() {
   const library = [
     { href: "/admin/intake", label: "Global Intake", hint: "Opening questions, style, examples" },
     { href: "/admin/document-types", label: "Document Types", hint: "Shared library for checklists" },
+    { href: "/admin/pricing", label: "DSCR Pricing", hint: "Upload Eastview & Deephaven sizers" },
     { href: "/admin/users", label: "Users & Roles", hint: "Lending team membership and roles" },
   ];
 

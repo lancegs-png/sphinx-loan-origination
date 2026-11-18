@@ -249,6 +249,163 @@ export async function saveGlobalIntakeConfig(input: {
 
 // ---------- M4: DSCR quoting ----------
 import { priceLoan, type PricingConfig, type QuoteInput, type QuoteResult } from "@/lib/pricing/engine";
+import {
+  priceQuote,
+  type GeneralConfig,
+  type InvestorFamily,
+  type InvestorQuote,
+  type QuoteParams,
+} from "@/lib/pricing/general";
+
+/** The single DSCR loan program's id — the two investor engines live on its pricing row. */
+async function dscrProgramId(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+): Promise<string | null> {
+  const { data } = await supabase
+    .from("loan_programs")
+    .select("id")
+    .eq("loan_type_key", "dscr")
+    .maybeSingle();
+  return (data?.id as string) ?? null;
+}
+
+/** Light shape guard for a parsed engine posted back from the admin upload UI. */
+function isEngineShape(e: unknown, family: InvestorFamily): e is GeneralConfig {
+  if (!e || typeof e !== "object") return false;
+  const c = e as Record<string, unknown>;
+  return (
+    c.family === family &&
+    typeof c.base_curves === "object" &&
+    typeof c.grids === "object" &&
+    typeof c.min_price === "number"
+  );
+}
+
+/**
+ * Admin: publish a parsed investor sizer as the live pricing engine for that investor. The two
+ * engines live side-by-side under the DSCR program's program_pricing.model.engines; this merges
+ * in one without disturbing the other or any existing guidelines.
+ */
+export async function publishInvestorPricing(input: {
+  investor: InvestorFamily;
+  engine: GeneralConfig;
+}): Promise<{ ok: boolean; error?: string; effectiveDate?: string | null }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+  const { data: me } = await supabase
+    .from("profiles")
+    .select("lender_user_type")
+    .eq("id", user.id)
+    .single();
+  if (me?.lender_user_type !== "admin") return { ok: false, error: "Admins only." };
+  if (!isEngineShape(input.engine, input.investor))
+    return { ok: false, error: "Engine payload failed validation." };
+
+  const programId = await dscrProgramId(supabase);
+  if (!programId) return { ok: false, error: "No DSCR loan program exists to attach pricing to." };
+
+  const { data: row } = await supabase
+    .from("program_pricing")
+    .select("guidelines,model")
+    .eq("program_id", programId)
+    .maybeSingle();
+
+  const model = { ...((row?.model as Record<string, unknown>) ?? {}) };
+  const engines = { ...((model.engines as Record<string, unknown>) ?? {}) };
+  engines[input.investor] = input.engine;
+  model.engines = engines;
+  const published = { ...((model.engines_published as Record<string, unknown>) ?? {}) };
+  published[input.investor] = {
+    at: new Date().toISOString(),
+    effective: input.engine.effective_date,
+    file: input.engine.source_file,
+    by: user.id,
+  };
+  model.engines_published = published;
+
+  const { error } = await supabase.from("program_pricing").upsert(
+    {
+      program_id: programId,
+      mode: "model",
+      guidelines: (row?.guidelines as string | null) ?? null,
+      model,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "program_id" },
+  );
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, effectiveDate: input.engine.effective_date };
+}
+
+export type DualQuote = {
+  quotes: InvestorQuote[];
+  best: InvestorFamily | null; // highest eligible net price
+  availableInvestors: InvestorFamily[];
+  publishedMeta: Record<string, { effective: string | null; at: string }>;
+};
+
+/**
+ * Price a loan scenario through every investor that has a published engine (Eastview,
+ * Deephaven), for the side-by-side Quote tab. The best execution — highest eligible net price —
+ * is flagged. Lending-team only.
+ */
+export async function dualQuote(
+  params: QuoteParams,
+): Promise<{ ok: boolean; result?: DualQuote; error?: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("is_lending_team")
+    .eq("id", user.id)
+    .single();
+  if (!profile?.is_lending_team) return { ok: false, error: "Lending team only." };
+
+  const programId = await dscrProgramId(supabase);
+  if (!programId) return { ok: false, error: "No DSCR loan program configured." };
+
+  const { data: row } = await supabase
+    .from("program_pricing")
+    .select("model")
+    .eq("program_id", programId)
+    .maybeSingle();
+  const model = (row?.model as Record<string, unknown> | null) ?? {};
+  const engines = (model.engines as Partial<Record<InvestorFamily, GeneralConfig>>) ?? {};
+  const publishedRaw = (model.engines_published as Record<string, { effective: string | null; at: string }>) ?? {};
+
+  const families: InvestorFamily[] = ["eastview", "deephaven"];
+  const quotes: InvestorQuote[] = [];
+  const available: InvestorFamily[] = [];
+  for (const fam of families) {
+    const eng = engines[fam];
+    if (!eng) continue;
+    available.push(fam);
+    quotes.push(priceQuote(eng, params));
+  }
+  if (quotes.length === 0)
+    return { ok: false, error: "No investor pricing has been uploaded yet — add a sizer in Settings → Pricing." };
+
+  let best: InvestorFamily | null = null;
+  let bestPrice = -Infinity;
+  for (const q of quotes) {
+    if (q.eligible && q.netPrice != null && q.netPrice > bestPrice) {
+      bestPrice = q.netPrice;
+      best = q.family;
+    }
+  }
+
+  const publishedMeta: Record<string, { effective: string | null; at: string }> = {};
+  for (const fam of available)
+    if (publishedRaw[fam]) publishedMeta[fam] = { effective: publishedRaw[fam].effective, at: publishedRaw[fam].at };
+
+  return { ok: true, result: { quotes, best, availableInvestors: available, publishedMeta } };
+}
 
 export async function quoteLoan(
   loanId: string,
