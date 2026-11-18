@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { SphinxLogo } from "@/components/brand";
 
@@ -49,6 +49,54 @@ export default function LoginPage() {
 
   const redirectTo =
     typeof window !== "undefined" ? `${window.location.origin}/auth/callback` : undefined;
+
+  // A failed email link (expired / already used / verifier cookie missing) lands back here with
+  // ?error=auth. Surface it so the bounce isn't silent, and clean the query so a refresh is clear.
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("error") === "auth") {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setMessage(
+          "That sign-in link didn’t work — it may have expired or already been used. Request a new one below.",
+        );
+        window.history.replaceState(null, "", window.location.pathname);
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  async function sendResetEmail() {
+    if (!email) {
+      setMessage("Enter your email above first, then tap “Forgot password”.");
+      return;
+    }
+    setBusy(true);
+    setMessage(null);
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo:
+          typeof window !== "undefined"
+            ? `${window.location.origin}/auth/callback?next=/update-password`
+            : undefined,
+      });
+      if (error && recoverFromCorruptSession(error.message)) return;
+      sessionStorage.removeItem(RECOVERED_FLAG);
+      setMessage(
+        error
+          ? `Couldn’t send reset email: ${error.message}`
+          : "Password reset email sent. Click the link in it to set a new password.",
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "unknown error";
+      if (recoverFromCorruptSession(msg)) return;
+      setMessage(`Couldn’t send reset email: ${msg}`);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function sendMagicLink(e: React.FormEvent) {
     e.preventDefault();
@@ -175,6 +223,14 @@ export default function LoginPage() {
                   Sign up
                 </button>
               </div>
+              <button
+                type="button"
+                onClick={sendResetEmail}
+                disabled={busy}
+                className="self-start text-sm text-muted underline decoration-line underline-offset-2 hover:text-fg"
+              >
+                Forgot password?
+              </button>
             </form>
           )}
 
