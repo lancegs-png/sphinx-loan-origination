@@ -40,6 +40,8 @@ export async function openLoan(input: {
   address: string;
   guarantorFirst?: string;
   guarantorLast?: string;
+  guarantorIds?: string[];
+  entityId?: string | null;
   kind: "opportunity" | "loan";
 }): Promise<{ ok: boolean; id?: string; error?: string }> {
   const supabase = await createClient();
@@ -66,6 +68,8 @@ export async function openLoan(input: {
       address,
       guarantorFirst: input.guarantorFirst,
       guarantorLast: input.guarantorLast,
+      guarantorIds: input.guarantorIds ?? [],
+      entityId: input.entityId ?? null,
       stage: isLoan ? "processing" : "intake",
       assignNumber: isLoan,
       createdByUserId: user.id,

@@ -1,6 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { upsertFieldValue } from "@/lib/fields";
+import { copyPartiesToLoan } from "@/lib/parties";
 import { recomputeLoan } from "@/lib/calc";
 import { ensureProgramAndChecklist } from "@/lib/checklist-seed";
 import { syncLoanToDashboard } from "@/lib/google/dashboard";
@@ -61,6 +62,9 @@ export type OpenDealInput = {
   address: string;
   guarantorFirst?: string;
   guarantorLast?: string;
+  /** Saved guarantors/entity (the library) to snapshot onto the new loan. */
+  guarantorIds?: string[];
+  entityId?: string | null;
   /** Assign the permanent SPHX number now (and append the org tracker). */
   assignNumber?: boolean;
   /** An already-issued number (importing an existing loan): set directly, skip the sequence + tracker. */
@@ -159,6 +163,11 @@ export async function openDeal(
   ];
   for (const [key, value] of fields) {
     if (value) await upsertFieldValue(admin, { loanId: loan.id, key, valueKind: "initial", value });
+  }
+  // Snapshot any selected library guarantors/entity onto the loan (overwrites the bare
+  // guarantor name seeded above with the full saved records).
+  if ((input.guarantorIds?.length ?? 0) > 0 || input.entityId) {
+    await copyPartiesToLoan(admin, loan.id, input.guarantorIds ?? [], input.entityId ?? null).catch(() => {});
   }
   await recomputeLoan(loan.id).catch(() => {});
 
