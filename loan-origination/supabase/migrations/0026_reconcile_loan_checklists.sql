@@ -55,8 +55,9 @@ begin
         notes  = coalesce(newlci.notes, oldlci.notes)
     from public.loan_checklist_items oldlci
     join public.document_types olddt on olddt.id = oldlci.document_type_id and olddt.name = pair.old_name
-    join public.document_types newdt on newdt.id = newlci.document_type_id and newdt.name = pair.new_name
-    where oldlci.loan_id = newlci.loan_id
+    join public.document_types newdt on newdt.name = pair.new_name
+    where newlci.document_type_id = newdt.id
+      and newlci.loan_id = oldlci.loan_id
       and coalesce(oldlci.status, 'outstanding') <> 'outstanding'
       and coalesce(newlci.status, 'outstanding') =  'outstanding';
 
