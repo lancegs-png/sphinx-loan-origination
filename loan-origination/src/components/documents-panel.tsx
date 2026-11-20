@@ -164,6 +164,7 @@ export function DocumentsPanel({
 
   // Group by document Type (the program checklist's `category`), preserving the configured
   // order: rows arrive sorted by `sort`, so a group takes the position of its first item.
+  // Within each section the documents are listed alphabetically by name.
   const groups = useMemo(() => {
     const out: { key: string; label: string; rows: ChecklistItem[] }[] = [];
     const idx = new Map<string, number>();
@@ -176,6 +177,9 @@ export function DocumentsPanel({
         out.push({ key: label, label, rows: [] });
       }
       out[gi].rows.push(r);
+    }
+    for (const g of out) {
+      g.rows.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
     }
     return out;
   }, [rows]);
@@ -343,7 +347,7 @@ export function DocumentsPanel({
                   type="button"
                   onClick={() => toggleGroup(g.key)}
                   aria-expanded={!isCollapsed}
-                  className="flex w-full items-center gap-2 border-b border-line bg-surface-2/70 px-3 py-2 text-left transition-colors hover:bg-surface-2"
+                  className="flex w-full items-center gap-2 border-b border-line bg-surface-2/70 px-3 py-2.5 text-left transition-colors hover:bg-surface-2"
                 >
                   <svg
                     width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -353,7 +357,7 @@ export function DocumentsPanel({
                     <path d="M6 9l6 6 6-6" />
                   </svg>
                   <Dot status={rollup} />
-                  <span className="text-[13px] font-semibold text-fg">{g.label}</span>
+                  <span className="text-[15px] font-semibold text-fg">{g.label}</span>
                   <span className="ml-auto text-[11px] tabular-nums text-muted">
                     {gApproved}/{gTotal} cleared
                   </span>
@@ -390,7 +394,7 @@ export function DocumentsPanel({
                       >
                         <div className={`${GRID} min-h-[2.5rem]`}>
                           {/* Item: chevron (if files) + status dot (click to change) + name + count + upload */}
-                          <div className="flex items-center gap-1.5 pl-3 pr-3 py-1.5 font-medium text-fg">
+                          <div className="flex items-center gap-1.5 pl-8 pr-3 py-1.5 font-medium text-fg">
                             {files.length > 0 ? (
                               <button
                                 type="button"
