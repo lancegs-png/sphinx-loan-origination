@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { saveLoanField, setLoanFieldLock, syncLoanToSheet, pullFromSheet } from "@/app/actions";
 import type { FieldDef, FieldValues, Loan } from "@/lib/types";
 import { INTAKE_FORM_SPEC, type IntakeFieldType } from "@/lib/intake/form-spec";
+import { stageIndex } from "@/lib/stages";
 
 // Section cards, labelled and ordered to mirror the DSCR dashboard's Loan Data tab.
 // Data Tape Fields holds the columns the tape adds on top of Loan Data; Additional Info
@@ -169,6 +170,12 @@ export function LoanData({
   const [status, setStatus] = useState<{ text: string; ok: boolean } | null>(null);
   const router = useRouter();
 
+  // While the deal is an opportunity (before Onboarding) the intake snapshot is the primary
+  // reference, so it leads the top-left column; from Onboarding on it drops to the bottom-left.
+  const onboardingIdx = stageIndex("onboarding");
+  const stageIdx = stageIndex(loan.stage);
+  const intakeAtTop = stageIdx >= 0 && stageIdx < onboardingIdx;
+
   // Auto-dismiss the save toast (errors linger a little longer so they can be read).
   useEffect(() => {
     if (!status) return;
@@ -210,7 +217,8 @@ export function LoanData({
   // Collapsible section cards. All open by default except these three; the choice is
   // remembered per browser.
   const [collapsed, setCollapsed] = useState<Set<string>>(
-    () => new Set(["additional", "data_tape", "intake_form"]),
+    // For opportunities the intake snapshot leads and starts expanded; otherwise it's collapsed.
+    () => new Set(intakeAtTop ? ["additional", "data_tape"] : ["additional", "data_tape", "intake_form"]),
   );
   useEffect(() => {
     try {
@@ -413,10 +421,12 @@ export function LoanData({
           cross-section gap (previously two separate grids left a hole under the shorter column). */}
       <div className="grid items-start gap-6 lg:grid-cols-2">
         <div className="flex flex-col gap-6">
+          {intakeAtTop && intakeCard}
           {sectionCard("loan")}
           {sectionCard("property")}
           {sectionCard("dscr_calc")}
           {sectionCard("additional")}
+          {!intakeAtTop && intakeCard}
         </div>
         <div className="flex flex-col gap-6">
           {sectionCard("trade")}
@@ -424,7 +434,6 @@ export function LoanData({
           {sectionCard("contact")}
           {sectionCard("closing")}
           {sectionCard("data_tape")}
-          {intakeCard}
         </div>
       </div>
       {canEdit && (
