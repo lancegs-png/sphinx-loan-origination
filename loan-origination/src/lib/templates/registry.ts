@@ -66,7 +66,7 @@ export const TEMPLATES: TemplateDef[] = [
       "purchase_price", "rehab_budget", "arv", "initial_loan_amount", "total_loan_amount",
       "ltc_total", "arltv", "interest_rate", "loan_term_months", "property_address",
     ],
-    generatable: false,
+    generatable: true,
     format: "docx",
   },
   {
@@ -81,7 +81,7 @@ export const TEMPLATES: TemplateDef[] = [
       "purchase_price", "rehab_budget", "arv", "total_loan_amount", "arltv", "interest_rate",
       "property_address",
     ],
-    generatable: false,
+    generatable: true,
     format: "docx",
   },
   {
