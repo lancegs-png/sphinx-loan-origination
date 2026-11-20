@@ -10,8 +10,12 @@ type Mode = "model" | "guidelines" | "document";
 const MODEL_FIELDS: { key: string; label: string }[] = [
   { key: "base_rate", label: "Base rate (%)" },
   { key: "points", label: "Points" },
+  { key: "origination_pct", label: "Origination fee (%)" },
   { key: "term_months", label: "Term (months)" },
   { key: "max_ltv", label: "Max LTV (%)" },
+  { key: "min_dscr", label: "Min DSCR (0 = n/a)" },
+  { key: "min_loan", label: "Min loan amount ($)" },
+  { key: "max_loan", label: "Max loan amount (0 = n/a)" },
 ];
 
 export function ProgramPricingEditor({

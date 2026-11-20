@@ -249,6 +249,7 @@ export async function saveGlobalIntakeConfig(input: {
 
 // ---------- M4: DSCR quoting ----------
 import { priceLoan, type PricingConfig, type QuoteInput, type QuoteResult } from "@/lib/pricing/engine";
+import { priceSimple, simpleModelFrom } from "@/lib/pricing/simple";
 import {
   priceQuote,
   type GeneralConfig,
@@ -426,19 +427,26 @@ export async function quoteLoan(
   const { data: loan } = await supabase.from("loans").select("program_id").eq("id", loanId).single();
   if (!loan?.program_id) return { ok: false, error: "No loan program set on this loan." };
 
-  const admin = createServiceRoleClient();
-  const { data: pricing } = await admin
+  // program_pricing is lending-team-readable, so the user session (already checked above)
+  // can read it — no service-role dependency.
+  const { data: pricing } = await supabase
     .from("program_pricing")
     .select("model")
     .eq("program_id", loan.program_id)
     .single();
-  const engine = (pricing?.model as { engine?: PricingConfig } | null)?.engine;
-  if (!engine) {
-    return { ok: false, error: "This program has no parsed pricing engine yet." };
-  }
+  const model = (pricing?.model as Record<string, unknown> | null) ?? null;
+  const engine = (model as { engine?: PricingConfig } | null)?.engine;
 
   try {
-    return { ok: true, result: priceLoan(engine, input) };
+    // DSCR (and any program with a parsed sizer) prices from its engine; every other program
+    // prices from its configurable rate/fee grid set in Settings → Pricing.
+    if (engine) return { ok: true, result: priceLoan(engine, input) };
+    const simple = simpleModelFrom(model);
+    if (simple) return { ok: true, result: priceSimple(simple, input) };
+    return {
+      ok: false,
+      error: "This program has no pricing configured yet. Set a rate/fee model in Settings → the program → Pricing.",
+    };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Pricing failed." };
   }
@@ -1296,6 +1304,48 @@ export async function saveProgramStageTasks(
   return { ok: true };
 }
 
+/**
+ * Admin: create or update a loan program. On create, `loanTypeKey` is required and is
+ * normalized to a lowercase snake_case key (unique). On update, name/asset class/sort are
+ * changed in place (the key is immutable — loans reference programs by id anyway). Relies
+ * on RLS for the admin check (loan_programs has an is_admin() write policy).
+ */
+export async function saveProgram(input: {
+  id?: string;
+  name: string;
+  assetClass: "residential" | "commercial";
+  loanTypeKey?: string;
+  sort?: number;
+}): Promise<{ ok: boolean; error?: string; id?: string }> {
+  const supabase = await createClient();
+  const name = input.name.trim();
+  if (!name) return { ok: false, error: "Name is required." };
+
+  if (input.id) {
+    const patch: Record<string, unknown> = { name, asset_class: input.assetClass };
+    if (input.sort != null) patch.sort = input.sort;
+    const { error } = await supabase.from("loan_programs").update(patch).eq("id", input.id);
+    if (error) return { ok: false, error: error.message };
+    return { ok: true, id: input.id };
+  }
+
+  const key = (input.loanTypeKey ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  if (!key) return { ok: false, error: "A program key is required." };
+  const { data, error } = await supabase
+    .from("loan_programs")
+    .insert({ name, loan_type_key: key, asset_class: input.assetClass, sort: input.sort ?? 0 })
+    .select("id")
+    .single();
+  if (error) {
+    return { ok: false, error: /duplicate|unique/i.test(error.message) ? `Program key "${key}" already exists.` : error.message };
+  }
+  return { ok: true, id: data.id as string };
+}
+
 export async function saveProgramPricing(input: {
   programId: string;
   mode: "model" | "guidelines" | "document";
@@ -1303,12 +1353,20 @@ export async function saveProgramPricing(input: {
   model: Record<string, unknown>;
 }): Promise<{ ok: boolean; error?: string }> {
   const supabase = await createClient();
+  // Merge the submitted grid fields into any existing model rather than replacing it, so a
+  // program that also holds a parsed sizer (the DSCR engines live under model.engines) keeps it.
+  const { data: existing } = await supabase
+    .from("program_pricing")
+    .select("model")
+    .eq("program_id", input.programId)
+    .maybeSingle();
+  const merged = { ...((existing?.model as Record<string, unknown> | null) ?? {}), ...input.model };
   const { error } = await supabase.from("program_pricing").upsert(
     {
       program_id: input.programId,
       mode: input.mode,
       guidelines: input.guidelines.trim() || null,
-      model: input.model,
+      model: merged,
       updated_at: new Date().toISOString(),
     },
     { onConflict: "program_id" },

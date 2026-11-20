@@ -83,6 +83,7 @@ export type FieldDef = {
   source: string | null; // intake | manual | calculated | system | config
   required_stage: string | null;
   calc_key: string | null;
+  programs: string[]; // loan_type_keys this field applies to; empty = all programs
 };
 
 // One field's stored values for a loan (idx handled by the map key).
