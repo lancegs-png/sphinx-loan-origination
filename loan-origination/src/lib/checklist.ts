@@ -6,31 +6,25 @@ import type { ChecklistItem, LoanDocument } from "@/lib/types";
 /**
  * Materialize a loan's checklist from its program's checklist on access — so the
  * Documents tab is populated (and borrowers can upload) from Intake onward, not only
- * once the loan reaches Processing. Additive and idempotent: when the loan is missing
- * items (e.g. a document type was added after its checklist was first built), it upserts
- * the program set with ignoreDuplicates — existing rows' statuses/notes are untouched.
- * The common case (loan already has every item) short-circuits on a count compare, so
- * the hot read path does no write.
+ * once the loan reaches Processing. Additive and idempotent: it inserts only the
+ * template documents the loan is actually missing (compared by document_type, not by
+ * row count — a loan can hold extra, now-removed documents and still be missing a newly
+ * added one), and existing rows' statuses/notes are untouched. The common case (loan
+ * already has every template document) does no write.
  */
 async function ensureLoanChecklist(loanId: string, programId: string): Promise<void> {
   const admin = createServiceRoleClient();
-  const [{ count: loanCount }, { count: programCount }] = await Promise.all([
-    admin.from("loan_checklist_items").select("id", { count: "exact", head: true }).eq("loan_id", loanId),
-    admin
-      .from("program_checklist_items")
-      .select("document_type_id", { count: "exact", head: true })
-      .eq("program_id", programId),
+  const [{ data: programItems }, { data: loanItems }] = await Promise.all([
+    admin.from("program_checklist_items").select("document_type_id").eq("program_id", programId),
+    admin.from("loan_checklist_items").select("document_type_id").eq("loan_id", loanId),
   ]);
-  if (!programCount) return;
-  if ((loanCount ?? 0) >= programCount) return; // already materialized — nothing missing
+  if (!programItems?.length) return;
 
-  const { data: items } = await admin
-    .from("program_checklist_items")
-    .select("document_type_id")
-    .eq("program_id", programId);
-  if (!items?.length) return;
+  const have = new Set((loanItems ?? []).map((i) => i.document_type_id as string));
+  const missing = programItems.filter((i) => !have.has(i.document_type_id as string));
+  if (!missing.length) return; // every template document is already present
 
-  const rows = items.map((i) => ({
+  const rows = missing.map((i) => ({
     loan_id: loanId,
     document_type_id: i.document_type_id,
     status: "outstanding",
