@@ -28,7 +28,18 @@ export function IntakeForm() {
     if (busy) return;
     setBusy(true);
     setError(null);
-    const res = await createIntakeDeal(values);
+    // Submit only the values for currently-visible fields, so hidden/irrelevant answers
+    // (e.g. renovation type on a long-term deal) never reach the deal or the snapshot.
+    const payload: Record<string, string> = {};
+    for (const s of INTAKE_FORM_SPEC) {
+      if (s.when && !s.when(values)) continue;
+      for (const f of s.fields) {
+        if (f.when && !f.when(values)) continue;
+        const v = values[f.key];
+        if (v != null && v.trim() !== "") payload[f.key] = v;
+      }
+    }
+    const res = await createIntakeDeal(payload);
     if (res.ok && res.id) {
       router.push(`/loans/${res.id}`);
       return; // keep the form busy through navigation
@@ -53,9 +64,11 @@ export function IntakeForm() {
             <legend className="px-1 text-sm font-semibold text-fg">{section.title}</legend>
             {section.blurb && <p className="mb-3 text-xs text-muted">{section.blurb}</p>}
             <div className="mt-3 grid grid-cols-1 gap-x-4 gap-y-3 sm:grid-cols-2">
-              {section.fields.map((f) => (
-                <Field key={f.key} spec={f} value={values[f.key] ?? ""} onChange={(v) => set(f.key, v)} />
-              ))}
+              {section.fields
+                .filter((f) => !f.when || f.when(values))
+                .map((f) => (
+                  <Field key={f.key} spec={f} value={values[f.key] ?? ""} onChange={(v) => set(f.key, v)} />
+                ))}
             </div>
           </fieldset>
         ))}
