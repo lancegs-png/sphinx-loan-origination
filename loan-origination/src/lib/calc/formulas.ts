@@ -171,15 +171,20 @@ export function rtlCalcs(get: Get): Record<string, unknown> {
   const rate = num(get, "interest_rate");
   const arv = num(get, "arv");
 
+  // Interest reserve: a manual input financed into the loan (0 when unset — existing loans
+  // are unaffected until a reserve is entered). It is part of the total loan amount and the
+  // LTC-total denominator, mirroring the RTL term-sheet math.
+  const interest_reserve = num(get, "interest_reserve") ?? 0;
+
   const initial_loan_amount = purchase != null && leverage != null ? r2((purchase * leverage) / 100) : null;
   const budget_financed_amount = rehab != null && budgetPct != null ? r2((rehab * budgetPct) / 100) : null;
   const total_loan_amount =
     initial_loan_amount != null && budget_financed_amount != null
-      ? r2(initial_loan_amount + budget_financed_amount)
+      ? r2(initial_loan_amount + budget_financed_amount + interest_reserve)
       : null;
 
   const ltc_initial = initial_loan_amount != null && purchase ? r2((initial_loan_amount / purchase) * 100) : null;
-  const denom = (purchase ?? 0) + (rehab ?? 0);
+  const denom = (purchase ?? 0) + (budget_financed_amount ?? 0) + interest_reserve;
   const ltc_total = total_loan_amount != null && denom ? r2((total_loan_amount / denom) * 100) : null;
   const arltv = total_loan_amount != null && arv ? r2((total_loan_amount / arv) * 100) : null;
 
