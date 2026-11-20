@@ -1,7 +1,6 @@
 import { AppShell } from "@/components/app-shell";
 import { NewDealButton } from "@/components/new-deal-button";
 import { PipelineView } from "@/components/pipeline-view";
-import { PipelineSummary } from "@/components/pipeline-summary";
 import { navFor } from "@/lib/nav";
 import type { Loan, Profile } from "@/lib/types";
 
@@ -14,11 +13,6 @@ export function PipelineHome({
   profile: Profile;
   guarantors: Record<string, string>;
 }) {
-  // Summary tiles reflect the active pipeline — exclude loans that aren't moving forward
-  // (archived / withdrawn / declined). The view below passes all loans so its Status filter
-  // can reveal them.
-  const hidden = new Set(["archived", "withdrawn", "declined"]);
-  const activeLoans = loans.filter((l) => !hidden.has(l.status));
   return (
     <AppShell email={profile.email} nav={navFor(profile)}>
       <main className="mx-auto max-w-[90rem] px-6 py-9 lg:px-10">
@@ -38,10 +32,7 @@ export function PipelineHome({
             </div>
           </div>
         ) : (
-          <>
-            <PipelineSummary loans={activeLoans} />
-            <PipelineView loans={loans} guarantors={guarantors} />
-          </>
+          <PipelineView loans={loans} guarantors={guarantors} />
         )}
       </main>
     </AppShell>
