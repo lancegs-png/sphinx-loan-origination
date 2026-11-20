@@ -287,7 +287,7 @@ export function PipelineTable({
                               </span>
                             );
                           })()}
-                        {c.key === "borrower" && <span className="block whitespace-nowrap text-fg">{l.borrower_name ?? "—"}</span>}
+                        {c.key === "borrower" && <span className="block max-w-[200px] truncate text-fg" title={l.borrower_name ?? undefined}>{l.borrower_name ?? "—"}</span>}
                         {c.key === "guarantor" && <span className="block whitespace-nowrap text-fg">{guarantors[l.id] ?? "—"}</span>}
                         {c.key === "amount" && (
                           <span className="font-medium tabular-nums text-fg">{money(l.loan_amount)}</span>
