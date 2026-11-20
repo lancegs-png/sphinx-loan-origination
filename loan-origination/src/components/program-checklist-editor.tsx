@@ -8,6 +8,7 @@ type RowState = {
   included: boolean;
   required: boolean;
   assignee: "borrower" | "lending_team";
+  category: string;
   naming: string;
   rules: string;
 };
@@ -25,6 +26,7 @@ export function ProgramChecklistEditor({
     document_type_id: string;
     required: boolean;
     assignee: string;
+    category: string | null;
     naming_override: string | null;
     review_rules_override: string | null;
   }[];
@@ -38,12 +40,17 @@ export function ProgramChecklistEditor({
         included: !!it,
         required: it?.required ?? true,
         assignee: (it?.assignee as RowState["assignee"]) ?? "borrower",
+        category: it?.category ?? "",
         naming: it?.naming_override ?? "",
         rules: it?.review_rules_override ?? "",
       };
     }
     return init;
   });
+  // Types already used across this program, offered as autocomplete suggestions.
+  const knownTypes = Array.from(
+    new Set(items.map((it) => (it.category ?? "").trim()).filter(Boolean)),
+  ).sort();
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
@@ -60,6 +67,7 @@ export function ProgramChecklistEditor({
         documentTypeId: d.id,
         required: rows[d.id].required,
         assignee: rows[d.id].assignee,
+        category: rows[d.id].category,
         namingOverride: rows[d.id].naming,
         reviewRulesOverride: rows[d.id].rules,
       }));
@@ -80,6 +88,12 @@ export function ProgramChecklistEditor({
         <h1 className="text-[1.75rem] font-bold text-fg">{programName}</h1>
         <p className="mt-1 text-sm text-muted">Required documents &amp; tasks</p>
       </header>
+
+      <datalist id="checklist-types">
+        {knownTypes.map((t) => (
+          <option key={t} value={t} />
+        ))}
+      </datalist>
 
       {docTypes.length === 0 ? (
         <p className="text-sm text-muted">
@@ -128,6 +142,16 @@ export function ProgramChecklistEditor({
                           <option value="borrower">Borrower</option>
                           <option value="lending_team">Lending team</option>
                         </select>
+                      </label>
+                      <label className="flex items-center gap-1.5">
+                        Type
+                        <input
+                          value={r.category}
+                          onChange={(e) => update(d.id, { category: e.target.value })}
+                          list="checklist-types"
+                          placeholder="e.g. Borrower Documents"
+                          className="field w-56"
+                        />
                       </label>
                     </div>
                     <input

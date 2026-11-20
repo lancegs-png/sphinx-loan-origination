@@ -1,13 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createLoanChecklist, setChecklistItemStatus } from "@/app/actions";
 import { createClient } from "@/lib/supabase/client";
 import type { ChecklistItem, LoanDocument } from "@/lib/types";
 
 const DOC_BUCKET = "loan-documents";
 
-const STATUSES = ["outstanding", "ordered", "update_needed", "approved", "not_applicable"];
+const STATUSES = ["outstanding", "ordered", "update_needed", "approved", "not_applicable"] as const;
 const STATUS_LABEL: Record<string, string> = {
   outstanding: "Outstanding",
   ordered: "Ordered",
@@ -15,17 +15,114 @@ const STATUS_LABEL: Record<string, string> = {
   approved: "Approved",
   not_applicable: "N/A",
 };
-// Filled status cell (color + tinted background), matching the deal dashboard.
-const STATUS_CELL: Record<string, string> = {
-  outstanding: "status-outstanding",
-  ordered: "",
-  update_needed: "status-update",
-  approved: "status-approved",
-  not_applicable: "",
+// Solid dot color per status (themed where a token exists).
+const STATUS_COLOR: Record<string, string> = {
+  outstanding: "var(--status-outstanding)",
+  ordered: "#2563eb",
+  update_needed: "var(--status-update)",
+  approved: "var(--status-approved)",
+  not_applicable: "var(--faint)",
+};
+// Rank for a group's roll-up dot: the most-blocking status present wins.
+const STATUS_RANK: Record<string, number> = {
+  outstanding: 4,
+  update_needed: 3,
+  ordered: 2,
+  approved: 1,
+  not_applicable: 0,
 };
 
-// Four-column spreadsheet grid shared by the header and every row.
-const GRID = "grid grid-cols-[minmax(14rem,1.7fr)_8.5rem_minmax(0,1.3fr)_minmax(6rem,16%)] items-stretch";
+const ACCESS_LABEL: Record<string, string> = {
+  borrower: "Borrower",
+  lending_team: "Lender",
+  additional: "Add'l",
+};
+
+// Item | Status | Access | Last Note — shared by the header and every row.
+const GRID = "grid grid-cols-[minmax(14rem,2fr)_8.5rem_6.5rem_minmax(8rem,1.4fr)] items-stretch";
+
+function Dot({ status, size = 11 }: { status: string; size?: number }) {
+  return (
+    <span
+      aria-hidden
+      className="inline-block shrink-0 rounded-full"
+      style={{ width: size, height: size, background: STATUS_COLOR[status] ?? "var(--faint)" }}
+    />
+  );
+}
+
+/** Clickable status: a colored dot + label that opens a dropdown of the five statuses. */
+function StatusControl({
+  status,
+  canEdit,
+  onChange,
+}: {
+  status: string;
+  canEdit: boolean;
+  onChange: (next: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDoc(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+
+  if (!canEdit) {
+    return (
+      <span className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-fg">
+        <Dot status={status} />
+        {STATUS_LABEL[status] ?? status}
+      </span>
+    );
+  }
+
+  return (
+    <div ref={ref} className="relative flex items-stretch">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        title="Change status"
+        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs font-medium text-fg transition-colors hover:bg-surface-2"
+      >
+        <Dot status={status} />
+        <span className="truncate">{STATUS_LABEL[status] ?? status}</span>
+      </button>
+      {open && (
+        <div
+          role="listbox"
+          className="absolute left-2 top-full z-20 mt-1 min-w-[10rem] overflow-hidden rounded-md border border-line bg-surface shadow-lg"
+        >
+          {STATUSES.map((s) => (
+            <button
+              key={s}
+              type="button"
+              role="option"
+              aria-selected={s === status}
+              onClick={() => {
+                setOpen(false);
+                if (s !== status) onChange(s);
+              }}
+              className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors hover:bg-surface-2 ${
+                s === status ? "font-semibold text-fg" : "text-muted"
+              }`}
+            >
+              <Dot status={s} />
+              {STATUS_LABEL[s]}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function DocumentsPanel({
   loanId,
@@ -45,6 +142,7 @@ export function DocumentsPanel({
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState<string | null>(null);
   const [dragItem, setDragItem] = useState<string | null>(null);
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [msg, setMsg] = useState<string | null>(null);
 
   const docsByItem = useMemo(() => {
@@ -57,6 +155,24 @@ export function DocumentsPanel({
     }
     return m;
   }, [docs]);
+
+  // Group by document Type (the program checklist's `category`), preserving the configured
+  // order: rows arrive sorted by `sort`, so a group takes the position of its first item.
+  const groups = useMemo(() => {
+    const out: { key: string; label: string; rows: ChecklistItem[] }[] = [];
+    const idx = new Map<string, number>();
+    for (const r of rows) {
+      const label = (r.category && r.category.trim()) || "Other Documents";
+      let gi = idx.get(label);
+      if (gi === undefined) {
+        gi = out.length;
+        idx.set(label, gi);
+        out.push({ key: label, label, rows: [] });
+      }
+      out[gi].rows.push(r);
+    }
+    return out;
+  }, [rows]);
 
   async function generate() {
     setBusy(true);
@@ -136,6 +252,15 @@ export function DocumentsPanel({
     setDocs((prev) => prev.filter((d) => d.id !== docId));
   }
 
+  function toggleGroup(key: string) {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
   if (rows.length === 0) {
     return (
       <div className="flex flex-col gap-3">
@@ -153,21 +278,6 @@ export function DocumentsPanel({
     );
   }
 
-  // Group by who provides the doc: borrower-provided, lender-ordered, or the case-by-case
-  // "Additional Documents" set (assignee "additional"). Empty groups are hidden below.
-  const GROUPS: { key: string; label: string; match: (r: ChecklistItem) => boolean }[] = [
-    {
-      key: "borrower",
-      label: "Borrower Provided",
-      match: (r) => r.assignee !== "lending_team" && r.assignee !== "additional",
-    },
-    { key: "lender", label: "Lender Ordered", match: (r) => r.assignee === "lending_team" },
-    {
-      key: "additional",
-      label: "Additional Documents (Case by Case)",
-      match: (r) => r.assignee === "additional",
-    },
-  ];
   const total = rows.length;
   const approved = rows.filter((r) => r.status === "approved").length;
 
@@ -178,28 +288,48 @@ export function DocumentsPanel({
       </p>
 
       <div className="overflow-x-auto">
-        <div className="card min-w-[640px] overflow-hidden text-sm">
+        <div className="card min-w-[680px] overflow-hidden text-sm">
           {/* Column headers */}
-          <div
-            className={`${GRID} border-b border-line bg-surface-2 text-[11px] font-semibold uppercase tracking-wide text-muted`}
-          >
-            <div className="px-3 py-1.5">Document</div>
-            <div className="border-l border-line px-3 py-1.5">Status</div>
-            <div className="border-l border-line px-3 py-1.5">Guidelines</div>
-            <div className="border-l border-line px-3 py-1.5">Notes</div>
+          <div className={`${GRID} border-b border-line bg-surface-2 text-[11px] font-semibold uppercase tracking-wide text-muted`}>
+            <div className="px-3 py-2">Item</div>
+            <div className="border-l border-line px-3 py-2">Status</div>
+            <div className="border-l border-line px-3 py-2">Access</div>
+            <div className="border-l border-line px-3 py-2">Last Note</div>
           </div>
 
-          <div className="flex flex-col gap-4">
-            {GROUPS.map((g) => {
-              const groupRows = rows.filter(g.match);
-              if (groupRows.length === 0) return null;
-              return (
-                <div key={g.key}>
-                  <div className="border-y border-line bg-surface-2 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-fg">
-                    {g.label}
-                  </div>
-                  <div className="divide-y divide-line">
-                    {groupRows.map((r) => {
+          {groups.map((g) => {
+            const isCollapsed = collapsed.has(g.key);
+            const gTotal = g.rows.length;
+            const gApproved = g.rows.filter((r) => r.status === "approved").length;
+            const rollup = g.rows.reduce(
+              (worst, r) => ((STATUS_RANK[r.status] ?? 0) > (STATUS_RANK[worst] ?? 0) ? r.status : worst),
+              "not_applicable",
+            );
+            return (
+              <div key={g.key}>
+                {/* Group header — click to collapse/expand */}
+                <button
+                  type="button"
+                  onClick={() => toggleGroup(g.key)}
+                  aria-expanded={!isCollapsed}
+                  className="flex w-full items-center gap-2 border-b border-line bg-surface-2/70 px-3 py-2 text-left transition-colors hover:bg-surface-2"
+                >
+                  <svg
+                    width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden
+                    className={`shrink-0 text-muted transition-transform ${isCollapsed ? "-rotate-90" : ""}`}
+                  >
+                    <path d="M6 9l6 6 6-6" />
+                  </svg>
+                  <Dot status={rollup} />
+                  <span className="text-[13px] font-semibold text-fg">{g.label}</span>
+                  <span className="ml-auto text-[11px] tabular-nums text-muted">
+                    {gApproved}/{gTotal} cleared
+                  </span>
+                </button>
+
+                {!isCollapsed &&
+                  g.rows.map((r) => {
                     const files = docsByItem.get(r.id) ?? [];
                     return (
                       <div
@@ -212,9 +342,7 @@ export function DocumentsPanel({
                               }
                             : undefined
                         }
-                        onDragLeave={
-                          canEdit ? () => setDragItem((d) => (d === r.id ? null : d)) : undefined
-                        }
+                        onDragLeave={canEdit ? () => setDragItem((d) => (d === r.id ? null : d)) : undefined}
                         onDrop={
                           canEdit
                             ? (e) => {
@@ -224,11 +352,13 @@ export function DocumentsPanel({
                               }
                             : undefined
                         }
-                        className={dragItem === r.id ? "bg-gold/5 ring-2 ring-inset ring-gold/60" : undefined}
+                        className={`border-b border-line last:border-0 ${
+                          dragItem === r.id ? "bg-gold/5 ring-2 ring-inset ring-gold/60" : ""
+                        }`}
                       >
-                        <div className={`${GRID} min-h-[2.25rem]`}>
-                          {/* Document + upload */}
-                          <div className="flex items-center gap-2 px-3 py-1.5 font-medium text-fg">
+                        <div className={`${GRID} min-h-[2.5rem]`}>
+                          {/* Item + upload */}
+                          <div className="flex items-center gap-2 pl-7 pr-3 py-1.5 font-medium text-fg">
                             <span className="min-w-0 break-words" title={r.name}>
                               {r.name}
                             </span>
@@ -252,85 +382,71 @@ export function DocumentsPanel({
                             )}
                           </div>
 
-                          {/* Status (colored cell) */}
-                          <div className={`flex items-stretch border-l border-line ${STATUS_CELL[r.status] ?? ""}`}>
-                            {canEdit ? (
-                              <select
-                                value={r.status}
-                                onChange={(e) => setStatus(r.id, e.target.value)}
-                                className="w-full cursor-pointer appearance-none bg-transparent px-3 py-1.5 text-xs font-medium text-inherit outline-none"
-                              >
-                                {STATUSES.map((s) => (
-                                  <option key={s} value={s} style={{ color: "var(--fg)" }}>
-                                    {STATUS_LABEL[s]}
-                                  </option>
-                                ))}
-                              </select>
-                            ) : (
-                              <span className="px-3 py-1.5 text-xs font-medium">{STATUS_LABEL[r.status]}</span>
-                            )}
+                          {/* Status — clickable dot + dropdown */}
+                          <div className="flex items-stretch border-l border-line">
+                            <StatusControl status={r.status} canEdit={canEdit} onChange={(s) => setStatus(r.id, s)} />
                           </div>
 
-                          {/* Guidelines */}
-                          <div className="flex items-center border-l border-line px-3 py-1.5 text-xs text-muted">
-                            <span>{r.guidance ?? ""}</span>
+                          {/* Access — who provides it */}
+                          <div className="flex items-center border-l border-line px-3 py-1.5">
+                            <span className="rounded bg-surface-2 px-1.5 py-0.5 text-[11px] font-medium text-muted">
+                              {ACCESS_LABEL[r.assignee] ?? r.assignee}
+                            </span>
                           </div>
 
-                          {/* Notes */}
+                          {/* Last Note — inline editable */}
                           <div className="flex items-stretch border-l border-line">
                             {canEdit ? (
                               <input
                                 defaultValue={r.notes ?? ""}
                                 onBlur={(e) => setNotes(r.id, e.target.value.trim())}
-                                placeholder="—"
+                                placeholder="Click to add note"
                                 className="w-full bg-transparent px-3 py-1.5 text-xs text-fg outline-none placeholder:text-faint focus:bg-gold/5"
                               />
                             ) : (
-                              <span className="px-3 py-1.5 text-xs text-muted">{r.notes ?? ""}</span>
+                              <span className="px-3 py-1.5 text-xs text-muted">{r.notes ?? "—"}</span>
                             )}
                           </div>
                         </div>
 
-                        {/* Attachments strip — shows uploaded files; upload entry is the name cell + drag-drop */}
-                        {files.length > 0 && (
-                          <div className="flex flex-wrap items-center gap-1.5 border-t border-dashed border-line/70 bg-surface-2/30 px-3 py-1.5">
-                            <span className="text-[10px] font-semibold uppercase tracking-wide text-faint">Files</span>
-                            {files.map((d) => (
-                              <span
-                                key={d.id}
-                                className="inline-flex items-center gap-1 rounded border border-line bg-surface px-1.5 py-0.5 text-xs"
+                        {/* Nested uploaded files — indented child rows */}
+                        {files.map((d) => (
+                          <div key={d.id} className="flex items-center gap-2 border-t border-dashed border-line/70 bg-surface-2/20 pl-12 pr-3 py-1.5">
+                            <svg
+                              width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                              strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden
+                              className="shrink-0 text-faint"
+                            >
+                              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                              <path d="M14 2v6h6" />
+                            </svg>
+                            <a
+                              href={`/api/loans/${loanId}/documents/${d.id}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="min-w-0 truncate text-xs text-navy hover:underline"
+                              title={d.file_name}
+                            >
+                              {d.file_name}
+                            </a>
+                            {canEdit && (
+                              <button
+                                type="button"
+                                onClick={() => removeDoc(d.id)}
+                                aria-label={`Remove ${d.file_name}`}
+                                className="ml-auto shrink-0 leading-none text-faint hover:text-[color:var(--status-outstanding)]"
                               >
-                                <a
-                                  href={`/api/loans/${loanId}/documents/${d.id}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="max-w-[14rem] truncate text-navy hover:underline"
-                                  title={d.file_name}
-                                >
-                                  {d.file_name}
-                                </a>
-                                {canEdit && (
-                                  <button
-                                    type="button"
-                                    onClick={() => removeDoc(d.id)}
-                                    aria-label={`Remove ${d.file_name}`}
-                                    className="leading-none text-faint hover:text-[color:var(--status-outstanding)]"
-                                  >
-                                    ×
-                                  </button>
-                                )}
-                              </span>
-                            ))}
+                                ×
+                              </button>
+                            )}
                           </div>
-                        )}
+                        ))}
                       </div>
                     );
                   })}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+              </div>
+            );
+          })}
         </div>
       </div>
 
