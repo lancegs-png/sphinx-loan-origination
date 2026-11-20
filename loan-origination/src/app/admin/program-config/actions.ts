@@ -166,6 +166,7 @@ export async function importProgramConfig(formData: FormData): Promise<ImportRes
         required: d.required,
         assignee: d.assignee,
         category: d.category,
+        visibility: d.visibility,
         sort: (i + 1) * 10,
       }));
       const { error } = await sb
@@ -203,8 +204,15 @@ async function reconcileTasks(sb: DbClient, programId: string, wanted: ParsedTas
 
   const counters: Record<string, number> = {};
   const keep = new Set<string>();
-  const inserts: { program_id: string; stage_bucket: string; label: string; sort: number }[] = [];
-  const updates: { id: string; sort: number }[] = [];
+  const inserts: {
+    program_id: string;
+    stage_bucket: string;
+    label: string;
+    sort: number;
+    visibility: string;
+    assigned_to: string | null;
+  }[] = [];
+  const updates: { id: string; sort: number; visibility: string; assigned_to: string | null }[] = [];
 
   for (const t of wanted) {
     const sort = counters[t.stageBucket] ?? 0;
@@ -212,9 +220,16 @@ async function reconcileTasks(sb: DbClient, programId: string, wanted: ParsedTas
     const id = byNatural.get(`${t.stageBucket}\u0000${t.label}`);
     if (id) {
       keep.add(id);
-      updates.push({ id, sort });
+      updates.push({ id, sort, visibility: t.visibility, assigned_to: t.assignedTo });
     } else {
-      inserts.push({ program_id: programId, stage_bucket: t.stageBucket, label: t.label, sort });
+      inserts.push({
+        program_id: programId,
+        stage_bucket: t.stageBucket,
+        label: t.label,
+        sort,
+        visibility: t.visibility,
+        assigned_to: t.assignedTo,
+      });
     }
   }
 
@@ -224,7 +239,10 @@ async function reconcileTasks(sb: DbClient, programId: string, wanted: ParsedTas
     if (error) return error.message;
   }
   for (const u of updates) {
-    const { error } = await sb.from("program_stage_tasks").update({ sort: u.sort }).eq("id", u.id);
+    const { error } = await sb
+      .from("program_stage_tasks")
+      .update({ sort: u.sort, visibility: u.visibility, assigned_to: u.assigned_to })
+      .eq("id", u.id);
     if (error) return error.message;
   }
   if (inserts.length) {

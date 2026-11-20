@@ -25,7 +25,7 @@ export default async function ChecklistPage({ params }: { params: Promise<{ id: 
     .order("name");
   const { data: items } = await supabase
     .from("program_checklist_items")
-    .select("document_type_id,required,assignee,category,naming_override,review_rules_override")
+    .select("document_type_id,required,assignee,visibility,category,naming_override,review_rules_override")
     .eq("program_id", id);
 
   const nav = navFor(session.profile);
@@ -41,6 +41,7 @@ export default async function ChecklistPage({ params }: { params: Promise<{ id: 
             document_type_id: string;
             required: boolean;
             assignee: string;
+            visibility: string;
             category: string | null;
             naming_override: string | null;
             review_rules_override: string | null;

@@ -32,14 +32,13 @@ const STATUS_RANK: Record<string, number> = {
   not_applicable: 0,
 };
 
-const ACCESS_LABEL: Record<string, string> = {
-  borrower: "Borrower",
-  lending_team: "Lender",
-  additional: "Add'l",
+const VISIBILITY_LABEL: Record<string, string> = {
+  all: "All",
+  lender_only: "Lender Only",
 };
 
-// Item | Status | Access | Last Note — shared by the header and every row.
-const GRID = "grid grid-cols-[minmax(14rem,2fr)_8.5rem_6.5rem_minmax(8rem,1.4fr)] items-stretch";
+// Item (status dot + name) | Access | Last Note — shared by the header and every row.
+const GRID = "grid grid-cols-[minmax(15rem,2.4fr)_7rem_minmax(8rem,1.4fr)] items-stretch";
 
 function Dot({ status, size = 11 }: { status: string; size?: number }) {
   return (
@@ -75,30 +74,29 @@ function StatusControl({
 
   if (!canEdit) {
     return (
-      <span className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-fg">
-        <Dot status={status} />
-        {STATUS_LABEL[status] ?? status}
+      <span className="inline-flex shrink-0" title={STATUS_LABEL[status] ?? status}>
+        <Dot status={status} size={12} />
       </span>
     );
   }
 
   return (
-    <div ref={ref} className="relative flex items-stretch">
+    <div ref={ref} className="relative inline-flex shrink-0">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-haspopup="listbox"
         aria-expanded={open}
-        title="Change status"
-        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs font-medium text-fg transition-colors hover:bg-surface-2"
+        aria-label={`Status: ${STATUS_LABEL[status] ?? status}. Change status`}
+        title={`${STATUS_LABEL[status] ?? status} — click to change`}
+        className="flex items-center rounded-full p-0.5 transition-transform hover:scale-110"
       >
-        <Dot status={status} />
-        <span className="truncate">{STATUS_LABEL[status] ?? status}</span>
+        <Dot status={status} size={12} />
       </button>
       {open && (
         <div
           role="listbox"
-          className="absolute left-2 top-full z-20 mt-1 min-w-[10rem] overflow-hidden rounded-md border border-line bg-surface shadow-lg"
+          className="absolute left-0 top-full z-20 mt-1 min-w-[10rem] overflow-hidden rounded-md border border-line bg-surface shadow-lg"
         >
           {STATUSES.map((s) => (
             <button
@@ -292,7 +290,6 @@ export function DocumentsPanel({
           {/* Column headers */}
           <div className={`${GRID} border-b border-line bg-surface-2 text-[11px] font-semibold uppercase tracking-wide text-muted`}>
             <div className="px-3 py-2">Item</div>
-            <div className="border-l border-line px-3 py-2">Status</div>
             <div className="border-l border-line px-3 py-2">Access</div>
             <div className="border-l border-line px-3 py-2">Last Note</div>
           </div>
@@ -357,8 +354,9 @@ export function DocumentsPanel({
                         }`}
                       >
                         <div className={`${GRID} min-h-[2.5rem]`}>
-                          {/* Item + upload */}
+                          {/* Item: status dot (click to change) + name + upload */}
                           <div className="flex items-center gap-2 pl-7 pr-3 py-1.5 font-medium text-fg">
+                            <StatusControl status={r.status} canEdit={canEdit} onChange={(s) => setStatus(r.id, s)} />
                             <span className="min-w-0 break-words" title={r.name}>
                               {r.name}
                             </span>
@@ -382,15 +380,17 @@ export function DocumentsPanel({
                             )}
                           </div>
 
-                          {/* Status — clickable dot + dropdown */}
-                          <div className="flex items-stretch border-l border-line">
-                            <StatusControl status={r.status} canEdit={canEdit} onChange={(s) => setStatus(r.id, s)} />
-                          </div>
-
-                          {/* Access — who provides it */}
+                          {/* Access — visibility (who sees it on the deal); set in Settings / the sheet */}
                           <div className="flex items-center border-l border-line px-3 py-1.5">
-                            <span className="rounded bg-surface-2 px-1.5 py-0.5 text-[11px] font-medium text-muted">
-                              {ACCESS_LABEL[r.assignee] ?? r.assignee}
+                            <span
+                              className={`rounded px-1.5 py-0.5 text-[11px] font-medium ${
+                                r.visibility === "lender_only"
+                                  ? "bg-navy/10 text-navy"
+                                  : "bg-surface-2 text-muted"
+                              }`}
+                              title={r.visibility === "lender_only" ? "Visible to the lending team only" : "Visible to all (lender, borrower, broker)"}
+                            >
+                              {VISIBILITY_LABEL[r.visibility] ?? "All"}
                             </span>
                           </div>
 

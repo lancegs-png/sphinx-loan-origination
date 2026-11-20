@@ -75,11 +75,9 @@ export default async function LoanPage({
         .select("key,label,section,type,options,lender_only,sort,verifiable,repeat_group,source,required_stage,calc_key,programs")
         .order("sort"),
       loadFieldValues(supabase, id), // RLS filters lender-only fields for borrowers
-      loadLoanChecklist(supabase, id, typedLoan.program_id),
-      // Stage-task checklist is an internal-staff tab; skip the query for borrowers.
-      isLender
-        ? loadLoanStageTasks(supabase, id, typedLoan.program_id)
-        : Promise.resolve([] as Awaited<ReturnType<typeof loadLoanStageTasks>>),
+      loadLoanChecklist(supabase, id, typedLoan.program_id, isLender),
+      // Borrowers / brokers see only the "all"-visibility tasks (read-only); the loader filters.
+      loadLoanStageTasks(supabase, id, typedLoan.program_id, isLender),
       loadLoanDocuments(supabase, id),
       // Activity log is a lender-only tab; load it only for the lending team.
       isLender ? loadLoanActivity(supabase, id) : Promise.resolve([] as ActivityEvent[]),

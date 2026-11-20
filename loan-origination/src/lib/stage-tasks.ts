@@ -7,20 +7,21 @@ import type { StageTaskGroup } from "@/lib/types";
  * Load a loan's stage-task checklist: the program's current task templates grouped by
  * pipeline bucket, left-joined with this loan's completion state. Template-driven — there
  * is no per-loan materialization, so editing a program's tasks reflects on every loan at
- * once, and completion is stored per template task id. User-scoped client → RLS: the
- * templates are lending-team-only, so borrowers get nothing (empty list → no tab content).
+ * once, and completion is stored per template task id. Lender-only tasks are filtered out
+ * for borrowers / brokers, who see only the "all"-visibility tasks (read-only in the UI).
  */
 export async function loadLoanStageTasks(
   client: SupabaseClient,
   loanId: string,
   programId: string | null,
+  isLender: boolean,
 ): Promise<StageTaskGroup[]> {
   if (!programId) return [];
 
-  const [{ data: tasks }, { data: status }] = await Promise.all([
+  const [{ data: tasksRaw }, { data: status }] = await Promise.all([
     client
       .from("program_stage_tasks")
-      .select("id,stage_bucket,label,sort")
+      .select("id,stage_bucket,label,sort,visibility,assigned_to")
       .eq("program_id", programId)
       .order("sort"),
     client
@@ -28,7 +29,9 @@ export async function loadLoanStageTasks(
       .select("task_id,done,note,completed_at,prof:completed_by(full_name,email)")
       .eq("loan_id", loanId),
   ]);
-  if (!tasks?.length) return [];
+  // Lender-only tasks are hidden from borrowers / brokers.
+  const tasks = (tasksRaw ?? []).filter((t) => isLender || t.visibility !== "lender_only");
+  if (!tasks.length) return [];
 
   const stat = new Map(
     (status ?? []).map((s) => {
@@ -65,6 +68,8 @@ export async function loadLoanStageTasks(
           note: s?.note ?? null,
           completedBy: s?.completedBy ?? null,
           completedAt: s?.completedAt ?? null,
+          visibility: (t.visibility as string) ?? "all",
+          assignedTo: (t.assigned_to as string | null) ?? null,
         };
       }),
   })).filter((g) => g.tasks.length > 0);

@@ -21,7 +21,7 @@ export default async function StageTasksPage({ params }: { params: Promise<{ id:
 
   const { data: tasks } = await supabase
     .from("program_stage_tasks")
-    .select("id,stage_bucket,label,sort")
+    .select("id,stage_bucket,label,sort,visibility,assigned_to")
     .eq("program_id", id)
     .order("sort");
 
@@ -33,7 +33,14 @@ export default async function StageTasksPage({ params }: { params: Promise<{ id:
         programId={id}
         programName={program.name}
         tasks={
-          (tasks as { id: string; stage_bucket: string; label: string; sort: number }[]) ?? []
+          (tasks as {
+            id: string;
+            stage_bucket: string;
+            label: string;
+            sort: number;
+            visibility: string;
+            assigned_to: string | null;
+          }[]) ?? []
         }
       />
     </AppShell>

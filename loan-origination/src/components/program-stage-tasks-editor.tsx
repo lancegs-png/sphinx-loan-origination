@@ -5,7 +5,14 @@ import Link from "next/link";
 import { STAGE_BUCKETS } from "@/lib/stages";
 import { saveProgramStageTasks, type StageTaskInput } from "@/app/actions";
 
-type Row = { uid: string; id?: string; bucket: string; label: string };
+type Row = {
+  uid: string;
+  id?: string;
+  bucket: string;
+  label: string;
+  visibility: "all" | "lender_only";
+  assignedTo: "" | "lender" | "borrower" | "broker";
+};
 
 let COUNTER = 0;
 const nextUid = () => `r${++COUNTER}`;
@@ -22,19 +29,33 @@ export function ProgramStageTasksEditor({
 }: {
   programId: string;
   programName: string;
-  tasks: { id: string; stage_bucket: string; label: string; sort: number }[];
+  tasks: {
+    id: string;
+    stage_bucket: string;
+    label: string;
+    sort: number;
+    visibility: string;
+    assigned_to: string | null;
+  }[];
 }) {
   const [rows, setRows] = useState<Row[]>(() =>
-    tasks.map((t) => ({ uid: nextUid(), id: t.id, bucket: t.stage_bucket, label: t.label })),
+    tasks.map((t) => ({
+      uid: nextUid(),
+      id: t.id,
+      bucket: t.stage_bucket,
+      label: t.label,
+      visibility: (t.visibility as Row["visibility"]) ?? "lender_only",
+      assignedTo: (t.assigned_to as Row["assignedTo"]) ?? "",
+    })),
   );
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
   function addTask(bucket: string) {
-    setRows((r) => [...r, { uid: nextUid(), bucket, label: "" }]);
+    setRows((r) => [...r, { uid: nextUid(), bucket, label: "", visibility: "lender_only", assignedTo: "" }]);
   }
-  function updateLabel(uid: string, label: string) {
-    setRows((r) => r.map((x) => (x.uid === uid ? { ...x, label } : x)));
+  function updateRow(uid: string, patch: Partial<Row>) {
+    setRows((r) => r.map((x) => (x.uid === uid ? { ...x, ...patch } : x)));
   }
   function remove(uid: string) {
     setRows((r) => r.filter((x) => x.uid !== uid));
@@ -62,7 +83,13 @@ export function ProgramStageTasksEditor({
     for (const b of STAGE_BUCKETS) {
       for (const row of rows.filter((x) => x.bucket === b.key)) {
         if (!row.label.trim()) continue;
-        payload.push({ id: row.id, stageBucket: b.key, label: row.label });
+        payload.push({
+          id: row.id,
+          stageBucket: b.key,
+          label: row.label,
+          visibility: row.visibility,
+          assignedTo: row.assignedTo || null,
+        });
       }
     }
     const res = await saveProgramStageTasks(programId, payload);
@@ -96,13 +123,35 @@ export function ProgramStageTasksEditor({
               {group.length === 0 && <p className="mb-3 text-sm text-faint">No tasks yet.</p>}
               <ul className="flex flex-col gap-2">
                 {group.map((row, i) => (
-                  <li key={row.uid} className="flex items-center gap-1.5">
+                  <li key={row.uid} className="flex flex-wrap items-center gap-1.5">
                     <input
                       value={row.label}
-                      onChange={(e) => updateLabel(row.uid, e.target.value)}
+                      onChange={(e) => updateRow(row.uid, { label: e.target.value })}
                       placeholder="Task description"
-                      className="field flex-1"
+                      className="field min-w-[12rem] flex-1"
                     />
+                    <select
+                      value={row.visibility}
+                      onChange={(e) => updateRow(row.uid, { visibility: e.target.value as Row["visibility"] })}
+                      aria-label="Visibility"
+                      title="Who can see this task"
+                      className="field select w-auto text-sm"
+                    >
+                      <option value="lender_only">Lender Only</option>
+                      <option value="all">All</option>
+                    </select>
+                    <select
+                      value={row.assignedTo}
+                      onChange={(e) => updateRow(row.uid, { assignedTo: e.target.value as Row["assignedTo"] })}
+                      aria-label="Assigned to"
+                      title="Assigned to"
+                      className="field select w-auto text-sm"
+                    >
+                      <option value="">Assign…</option>
+                      <option value="lender">Lender</option>
+                      <option value="borrower">Borrower</option>
+                      <option value="broker">Broker</option>
+                    </select>
                     <button
                       type="button"
                       onClick={() => move(row.uid, -1)}

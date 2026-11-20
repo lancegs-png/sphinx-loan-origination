@@ -7,7 +7,8 @@ import { saveProgramChecklist, type ChecklistItemInput } from "@/app/actions";
 type RowState = {
   included: boolean;
   required: boolean;
-  assignee: "borrower" | "lending_team";
+  assignee: "borrower" | "lending_team"; // preserved for AI context; edited via Access below
+  visibility: "all" | "lender_only";
   category: string;
   naming: string;
   rules: string;
@@ -26,6 +27,7 @@ export function ProgramChecklistEditor({
     document_type_id: string;
     required: boolean;
     assignee: string;
+    visibility: string;
     category: string | null;
     naming_override: string | null;
     review_rules_override: string | null;
@@ -40,6 +42,7 @@ export function ProgramChecklistEditor({
         included: !!it,
         required: it?.required ?? true,
         assignee: (it?.assignee as RowState["assignee"]) ?? "borrower",
+        visibility: (it?.visibility as RowState["visibility"]) ?? "all",
         category: it?.category ?? "",
         naming: it?.naming_override ?? "",
         rules: it?.review_rules_override ?? "",
@@ -67,6 +70,7 @@ export function ProgramChecklistEditor({
         documentTypeId: d.id,
         required: rows[d.id].required,
         assignee: rows[d.id].assignee,
+        visibility: rows[d.id].visibility,
         category: rows[d.id].category,
         namingOverride: rows[d.id].naming,
         reviewRulesOverride: rows[d.id].rules,
@@ -131,16 +135,16 @@ export function ProgramChecklistEditor({
                         required
                       </label>
                       <label className="flex items-center gap-1.5">
-                        Assignee
+                        Access
                         <select
-                          value={r.assignee}
+                          value={r.visibility}
                           onChange={(e) =>
-                            update(d.id, { assignee: e.target.value as RowState["assignee"] })
+                            update(d.id, { visibility: e.target.value as RowState["visibility"] })
                           }
                           className="field select w-auto"
                         >
-                          <option value="borrower">Borrower</option>
-                          <option value="lending_team">Lending team</option>
+                          <option value="all">All</option>
+                          <option value="lender_only">Lender Only</option>
                         </select>
                       </label>
                       <label className="flex items-center gap-1.5">

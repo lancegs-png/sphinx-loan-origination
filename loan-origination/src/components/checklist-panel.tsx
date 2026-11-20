@@ -5,6 +5,8 @@ import { setLoanTaskStatus } from "@/app/actions";
 import { bucketKeyForStage } from "@/lib/stages";
 import type { StageTask, StageTaskGroup } from "@/lib/types";
 
+const ASSIGNED_LABEL: Record<string, string> = { lender: "Lender", borrower: "Borrower", broker: "Broker" };
+
 /** MM/DD/YY for the completion stamp. */
 function fmtDate(iso: string | null): string {
   if (!iso) return "";
@@ -115,6 +117,16 @@ export function ChecklistPanel({
                     />
                     <span className="flex-1">
                       <span className={t.done ? "text-muted line-through" : "text-fg"}>{t.label}</span>
+                      {t.assignedTo && (
+                        <span className="ml-2 chip bg-surface-2 text-muted" title="Assigned to">
+                          {ASSIGNED_LABEL[t.assignedTo] ?? t.assignedTo}
+                        </span>
+                      )}
+                      {canEdit && t.visibility === "lender_only" && (
+                        <span className="ml-1 chip bg-navy/10 text-navy" title="Visible to the lending team only">
+                          Lender only
+                        </span>
+                      )}
                       {t.done && t.completedBy && (
                         <span className="ml-2 text-xs text-faint">
                           Done by {t.completedBy}
