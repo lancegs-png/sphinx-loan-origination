@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { saveLoanField, saveDealContacts } from "@/app/actions";
-import { addLoanGuarantor, setLoanEntity } from "@/app/guarantors/actions";
+import { addLoanGuarantor, removeLoanGuarantor, setLoanEntity } from "@/app/guarantors/actions";
 import { GuarantorPicker, EntityPicker } from "@/components/party-picker";
 import type { DealContact, FieldValues, Participant } from "@/lib/types";
 
@@ -114,8 +114,7 @@ const GUAR_LINES = [
 function GuarantorsSection({ loanId, values, canEdit }: { loanId: string; values: FieldValues; canEdit: boolean }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
-  const idxs = guarantorIdxs(values);
-  const extra = idxs.filter((i) => i > 1);
+  const idxs = guarantorIdxs(values); // always includes slot 1
 
   async function add(ids: string[]) {
     const id = ids[ids.length - 1];
@@ -125,28 +124,33 @@ function GuarantorsSection({ loanId, values, canEdit }: { loanId: string; values
     setBusy(false);
     if (res.ok) router.refresh();
   }
+  async function remove(i: number) {
+    if (busy) return;
+    setBusy(true);
+    const res = await removeLoanGuarantor(loanId, i);
+    setBusy(false);
+    if (res.ok) router.refresh();
+  }
 
   return (
     <Group title="Guarantors">
       <div className="grid gap-3 sm:grid-cols-2">
-        {/* Guarantor 1 is fully editable; additional guarantors show read-only (edit on Loan Info). */}
-        <FixedContact loanId={loanId} label="Guarantor" canEdit={canEdit} values={values} lines={GUAR_LINES} />
-        {extra.map((i) => {
-          const g = (base: string) => val(values, `${base}#${i}`);
-          const name = [g("guarantor_first_name"), g("guarantor_last_name")].filter(Boolean).join(" ");
-          return (
-            <div key={i} className="card p-3.5">
-              <div className="mb-2"><span className="chip">Guarantor {i}</span></div>
-              <p className="font-medium text-fg">{name || "—"}</p>
-              {g("guarantor_email") && <p className="text-sm text-muted">{g("guarantor_email")}</p>}
-              {g("guarantor_phone") && <p className="text-sm text-muted">{g("guarantor_phone")}</p>}
-            </div>
-          );
-        })}
+        {idxs.map((i, pos) => (
+          <FixedContact
+            key={i}
+            loanId={loanId}
+            label={pos === 0 ? "Guarantor" : `Guarantor ${pos + 1}`}
+            canEdit={canEdit}
+            values={values}
+            idx={i}
+            lines={GUAR_LINES}
+            onRemove={canEdit && i > 1 ? () => remove(i) : undefined}
+          />
+        ))}
       </div>
       {canEdit && (
         <div className="mt-3 max-w-md">
-          <p className="mb-1 text-xs font-medium text-muted">Add a saved guarantor</p>
+          <p className="mb-1 text-xs font-medium text-muted">Add a guarantor (saved or new)</p>
           <GuarantorPicker value={[]} onChange={add} />
         </div>
       )}
@@ -210,21 +214,36 @@ function FixedContact({
   canEdit,
   values,
   lines,
+  idx = 1,
+  onRemove,
 }: {
   loanId: string;
   label: string;
   canEdit: boolean;
   values: FieldValues;
   lines: { label: string; key: string }[];
+  idx?: number;
+  onRemove?: () => void;
 }) {
+  // Repeat-group rows (guarantor 2..N) are stored under `key#idx`.
+  const fieldKey = (k: string) => (idx > 1 ? `${k}#${idx}` : k);
   const save = (key: string, value: string, baseline: string) => {
     if (value === baseline) return;
-    void saveLoanField({ loanId, key, type: "text", value, valueKind: "initial" });
+    void saveLoanField({ loanId, key, type: "text", value, valueKind: "initial", idx });
   };
   return (
     <div className="card p-3.5">
       <div className="mb-2 flex items-center justify-between gap-2">
         <span className="chip">{label}</span>
+        {onRemove && (
+          <button
+            type="button"
+            onClick={onRemove}
+            className="text-xs text-muted underline hover:text-[color:var(--status-outstanding)]"
+          >
+            Remove
+          </button>
+        )}
       </div>
       <div className="flex flex-col gap-2">
         {lines.map((ln) => (
@@ -232,7 +251,7 @@ function FixedContact({
             key={ln.key}
             label={ln.label}
             k={ln.key}
-            base={val(values, ln.key)}
+            base={val(values, fieldKey(ln.key))}
             canEdit={canEdit}
             onSave={save}
           />

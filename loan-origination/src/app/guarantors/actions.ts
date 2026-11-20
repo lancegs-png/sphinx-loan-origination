@@ -121,6 +121,21 @@ export async function addLoanGuarantor(loanId: string, guarantorId: string): Pro
   return { ok: true, idx: nextIdx };
 }
 
+/** Remove a guarantor slot (idx) from a loan: its field values + the provenance link. */
+export async function removeLoanGuarantor(loanId: string, idx: number): Promise<{ ok: boolean; error?: string }> {
+  if (!(await requireLender())) return { ok: false, error: "Lending team only." };
+  const sb = await createClient();
+  const { error } = await sb
+    .from("loan_field_values")
+    .delete()
+    .eq("loan_id", loanId)
+    .like("field_key", "guarantor_%")
+    .eq("idx", idx);
+  if (error) return { ok: false, error: error.message };
+  await sb.from("loan_guarantors").delete().eq("loan_id", loanId).eq("idx", idx);
+  return { ok: true };
+}
+
 /** Set (or replace) an existing loan's borrowing entity from a saved record. */
 export async function setLoanEntity(loanId: string, entityId: string): Promise<{ ok: boolean; error?: string }> {
   if (!(await requireLender())) return { ok: false, error: "Lending team only." };
