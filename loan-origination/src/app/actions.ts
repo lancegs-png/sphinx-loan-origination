@@ -18,6 +18,7 @@ import { logEvent } from "@/lib/audit";
 import { answerLoanQuestion } from "@/lib/ai/record-keeper";
 import { loadLoanChecklist } from "@/lib/checklist";
 import { openDeal } from "@/lib/loans/open-deal";
+import { getActiveLink, isRateLimited, recordSubmission, newLinkToken } from "@/lib/intake/links";
 import { STAGES } from "@/lib/stages";
 import { isLoanStatus } from "@/lib/status";
 import {
@@ -141,6 +142,145 @@ export async function createIntakeDeal(
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Could not create the deal" };
   }
+}
+
+/**
+ * Public intake submission (Phase 3). Called with no auth from the shared /apply/<token>
+ * form. Validates the link, drops bots via the honeypot, rate-limits per link, then opens an
+ * Opportunity (service role) attributed to the link's owner. Returns success without the loan
+ * id — the public submitter can't see the deal. See docs/intake-crm-design.md §8.
+ */
+export async function submitPublicIntake(input: {
+  token: string;
+  values: Record<string, string>;
+  website?: string; // honeypot — real users never fill this
+}): Promise<{ ok: boolean; error?: string }> {
+  const link = await getActiveLink(input.token);
+  if (!link) return { ok: false, error: "This link is no longer active." };
+
+  // Honeypot: a bot filled the hidden field. Pretend success and drop it silently.
+  if ((input.website ?? "").trim() !== "") return { ok: true };
+
+  if (await isRateLimited(input.token)) {
+    return { ok: false, error: "We've received several submissions from this link recently. Please try again shortly." };
+  }
+
+  const clean: Record<string, string> = {};
+  for (const [k, v] of Object.entries(input.values ?? {})) {
+    const t = typeof v === "string" ? v.trim() : "";
+    if (t) clean[k] = t;
+  }
+  if (!clean.property_street) return { ok: false, error: "Enter the property street address" };
+  if (!clean.guarantor_first_name && !clean.guarantor_last_name && !clean.borrower_entity) {
+    return { ok: false, error: "Enter the borrower name or entity" };
+  }
+
+  // Attribution from the link overrides whatever the form carried.
+  clean.source_channel =
+    link.owner_type === "broker" ? "broker" : link.owner_type === "referral_partner" ? "referral_partner" : "direct";
+  if (link.owner_type !== "sphinx_originator") {
+    if (link.owner_name) clean.broker_name = link.owner_name;
+    if (link.owner_email) clean.broker_email = link.owner_email;
+  }
+
+  const address = [
+    clean.property_street,
+    [clean.property_city, [clean.property_state, clean.property_zip].filter(Boolean).join(" ")]
+      .filter(Boolean)
+      .join(", "),
+  ]
+    .filter(Boolean)
+    .join(", ");
+
+  try {
+    const result = await openDeal(createServiceRoleClient(), {
+      address,
+      guarantorFirst: clean.guarantor_first_name ?? "",
+      guarantorLast: clean.guarantor_last_name ?? "",
+      stage: "intake",
+      accountManagerId: link.owner_type === "sphinx_originator" ? link.owner_user_id : null,
+      intake: clean,
+    });
+    const ip = (await headers()).get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
+    await recordSubmission(link.id, link.token, result.id, ip);
+    return { ok: true };
+  } catch {
+    return { ok: false, error: "Something went wrong submitting the form. Please try again." };
+  }
+}
+
+/** Confirm the caller is lending team; returns their user id or an error. */
+async function requireLender(): Promise<{ userId: string } | { error: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Not signed in" };
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("lender_user_type")
+    .eq("id", user.id)
+    .single();
+  if (!profile?.lender_user_type) return { error: "Lending team only" };
+  return { userId: user.id };
+}
+
+/** Create or update a shareable intake link (Settings → Intake Links). Lending team only. */
+export async function saveIntakeLink(input: {
+  id?: string;
+  label: string;
+  owner_type: "sphinx_originator" | "broker" | "referral_partner";
+  owner_user_id?: string | null;
+  owner_name?: string | null;
+  owner_email?: string | null;
+  branding: "sphinx" | "white_label";
+}): Promise<{ ok: boolean; error?: string; token?: string }> {
+  const auth = await requireLender();
+  if ("error" in auth) return { ok: false, error: auth.error };
+
+  const label = input.label.trim();
+  if (!label) return { ok: false, error: "Enter a label" };
+  const isSphinx = input.owner_type === "sphinx_originator";
+  if (isSphinx && !input.owner_user_id) return { ok: false, error: "Pick the Sphinx originator" };
+  if (!isSphinx && !(input.owner_name ?? "").trim()) return { ok: false, error: "Enter the partner's name" };
+
+  const row = {
+    label,
+    owner_type: input.owner_type,
+    owner_user_id: isSphinx ? input.owner_user_id ?? null : null,
+    owner_name: isSphinx ? null : (input.owner_name ?? "").trim() || null,
+    owner_email: isSphinx ? null : (input.owner_email ?? "").trim() || null,
+    branding: input.branding,
+  };
+
+  const supabase = await createClient();
+  if (input.id) {
+    const { error } = await supabase.from("intake_links").update(row).eq("id", input.id);
+    return error ? { ok: false, error: error.message } : { ok: true };
+  }
+  const token = newLinkToken();
+  const { error } = await supabase
+    .from("intake_links")
+    .insert({ ...row, token, active: true, created_by: auth.userId });
+  return error ? { ok: false, error: error.message } : { ok: true, token };
+}
+
+/** Activate or deactivate a link. Lending team only. */
+export async function setIntakeLinkActive(id: string, active: boolean): Promise<{ ok: boolean; error?: string }> {
+  const auth = await requireLender();
+  if ("error" in auth) return { ok: false, error: auth.error };
+  const supabase = await createClient();
+  const { error } = await supabase.from("intake_links").update({ active }).eq("id", id);
+  return error ? { ok: false, error: error.message } : { ok: true };
+}
+
+/** Delete a link entirely. Lending team only. */
+export async function deleteIntakeLink(id: string): Promise<{ ok: boolean; error?: string }> {
+  const auth = await requireLender();
+  if ("error" in auth) return { ok: false, error: auth.error };
+  const supabase = await createClient();
+  const { error } = await supabase.from("intake_links").delete().eq("id", id);
+  return error ? { ok: false, error: error.message } : { ok: true };
 }
 
 /**
