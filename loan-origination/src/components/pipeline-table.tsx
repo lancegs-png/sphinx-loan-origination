@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { STAGES, stageLabel, stageIndex } from "@/lib/stages";
+import { STAGE_BUCKETS, bucketKeyForStage, bucketLabelForStage, stageIndex } from "@/lib/stages";
 import type { Loan } from "@/lib/types";
 
 function money(n: number | null) {
@@ -127,15 +127,11 @@ export function PipelineTable({
     [loans],
   );
 
-  const stagesPresent = useMemo(() => {
-    const present = new Set(loans.map((l) => l.stage));
-    return STAGES.filter((s) => present.has(s.key));
-  }, [loans]);
-
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return loans.filter((l) => {
-      if (stage && l.stage !== stage) return false;
+      // Filter by funnel bucket, matching the pipeline summary tiles.
+      if (stage && bucketKeyForStage(l.stage) !== stage) return false;
       if (type && l.loan_type !== type) return false;
       if (!q) return true;
       const hay = [l.loan_number, l.opportunity_number, l.property_address, l.borrower_name, guarantors[l.id]]
@@ -175,9 +171,9 @@ export function PipelineTable({
           className="field field-sm select w-auto"
         >
           <option value="">All stages</option>
-          {stagesPresent.map((s) => (
-            <option key={s.key} value={s.key}>
-              {s.label}
+          {STAGE_BUCKETS.map((b) => (
+            <option key={b.key} value={b.key}>
+              {b.label}
             </option>
           ))}
         </select>
@@ -300,7 +296,7 @@ export function PipelineTable({
                         {c.key === "stage" && (
                           <span className="inline-flex items-center gap-2 whitespace-nowrap text-fg">
                             <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-gold" />
-                            {stageLabel(l.stage)}
+                            {bucketLabelForStage(l.stage)}
                           </span>
                         )}
                         {c.key === "close" && (

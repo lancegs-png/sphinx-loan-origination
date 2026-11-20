@@ -47,3 +47,9 @@ export function bucketIndex(stage: string): number {
 export function bucketKeyForStage(stage: string): StageBucketKey | null {
   return STAGE_BUCKETS.find((b) => (b.stages as readonly string[]).includes(stage))?.key ?? null;
 }
+
+/** Label of the bucket that contains `stage` (the funnel name shown on the pipeline tiles),
+ *  falling back to the raw stage label. */
+export function bucketLabelForStage(stage: string): string {
+  return STAGE_BUCKETS.find((b) => (b.stages as readonly string[]).includes(stage))?.label ?? stageLabel(stage);
+}
