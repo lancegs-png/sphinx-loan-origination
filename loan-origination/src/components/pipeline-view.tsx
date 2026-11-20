@@ -31,8 +31,8 @@ export function PipelineView({
 }) {
   const [view, setView] = useState<"table" | "board">("table");
   const [statusFilter, setStatusFilter] = useState("pipeline");
-  // Transient drill-down from the summary tiles (not persisted — it's a quick filter).
-  const [bucketFilter, setBucketFilter] = useState<string | null>(null);
+  // Transient multi-select stage filter from the summary tiles (not persisted — a quick filter).
+  const [bucketFilters, setBucketFilters] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {
     try {
@@ -65,7 +65,12 @@ export function PipelineView({
   }
 
   function toggleBucket(key: string) {
-    setBucketFilter((cur) => (cur === key ? null : key));
+    setBucketFilters((cur) => {
+      const next = new Set(cur);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
   }
 
   // Default ("pipeline") hides loans that aren't moving forward; "all" shows everything;
@@ -77,16 +82,23 @@ export function PipelineView({
     return loans.filter((l) => l.status === statusFilter);
   }, [loans, statusFilter]);
 
-  const activeBucket = bucketFilter ? STAGE_BUCKETS.find((b) => b.key === bucketFilter) : undefined;
+  // Stages covered by the selected buckets (null when none selected → show everything).
+  const selectedStages = useMemo(() => {
+    if (bucketFilters.size === 0) return null;
+    const stages = new Set<string>();
+    for (const b of STAGE_BUCKETS) {
+      if (bucketFilters.has(b.key)) for (const s of b.stages as readonly string[]) stages.add(s);
+    }
+    return stages;
+  }, [bucketFilters]);
   const visible = useMemo(() => {
-    if (!activeBucket) return statusVisible;
-    const stages = activeBucket.stages as readonly string[];
-    return statusVisible.filter((l) => stages.includes(l.stage));
-  }, [statusVisible, activeBucket]);
+    if (!selectedStages) return statusVisible;
+    return statusVisible.filter((l) => selectedStages.has(l.stage));
+  }, [statusVisible, selectedStages]);
 
   return (
     <div className="flex flex-col gap-4">
-      <PipelineSummary loans={statusVisible} activeBucket={bucketFilter} onPick={toggleBucket} />
+      <PipelineSummary loans={statusVisible} activeBuckets={bucketFilters} onPick={toggleBucket} />
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-3">
           <div className="inline-flex self-start rounded-md border border-line p-0.5 text-sm">
@@ -102,16 +114,31 @@ export function PipelineView({
             </button>
           ))}
           </div>
-          {activeBucket && (
-            <button
-              type="button"
-              onClick={() => setBucketFilter(null)}
-              className="inline-flex items-center gap-1 rounded-full border border-gold/60 bg-gold/10 px-2.5 py-1 text-xs font-medium text-navy transition-colors hover:bg-gold/20"
-              title="Clear the stage filter"
-            >
-              {activeBucket.label}
-              <span aria-hidden className="text-sm leading-none">×</span>
-            </button>
+          {bucketFilters.size > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              {STAGE_BUCKETS.filter((b) => bucketFilters.has(b.key)).map((b) => (
+                <button
+                  key={b.key}
+                  type="button"
+                  onClick={() => toggleBucket(b.key)}
+                  className="inline-flex items-center gap-1 rounded-full border border-gold/60 bg-gold/10 px-2.5 py-1 text-xs font-medium text-navy transition-colors hover:bg-gold/20"
+                  title={`Remove ${b.label} from the filter`}
+                >
+                  {b.label}
+                  <span aria-hidden className="text-sm leading-none">×</span>
+                </button>
+              ))}
+              {bucketFilters.size > 1 && (
+                <button
+                  type="button"
+                  onClick={() => setBucketFilters(new Set())}
+                  className="text-xs font-medium text-muted underline underline-offset-2 hover:text-fg"
+                  title="Clear all stage filters"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
           )}
         </div>
         <label className="flex items-center gap-2 text-sm text-muted">

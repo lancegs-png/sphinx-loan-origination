@@ -21,11 +21,11 @@ function compactUsd(n: number): string {
 
 export function PipelineSummary({
   loans,
-  activeBucket,
+  activeBuckets,
   onPick,
 }: {
   loans: Loan[];
-  activeBucket: string | null;
+  activeBuckets: Set<string>;
   onPick: (key: string) => void;
 }) {
   const stats = STAGE_BUCKETS.map((b) => {
@@ -37,14 +37,14 @@ export function PipelineSummary({
   return (
     <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
       {stats.map((s) => {
-        const active = activeBucket === s.key;
+        const active = activeBuckets.has(s.key);
         return (
           <button
             key={s.key}
             type="button"
             onClick={() => onPick(s.key)}
             aria-pressed={active}
-            title={active ? `Showing ${s.label} — click to clear` : `Filter the pipeline by ${s.label}`}
+            title={active ? `${s.label} is in the filter — click to remove` : `Add ${s.label} to the filter`}
             className={`card px-4 py-3 text-left transition-colors hover:border-gold/60 ${
               active ? "border-gold/70 ring-2 ring-gold/60" : ""
             }`}

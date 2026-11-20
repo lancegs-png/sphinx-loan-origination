@@ -118,6 +118,15 @@ const SINGLE_VALUE_KEYS = new Set([
 // Only these fields get the lock / unlock control.
 const LOCKABLE_KEYS = new Set(["interest_rate", "ltv", "origination_fee_pct"]);
 
+// Every collapsible section card key, and which ones open by default in each phase.
+// Opportunity / Quoted lead with the intake snapshot; Onboarding and later lead with the
+// structured Loan / Property / Borrower sections. Everything else starts collapsed.
+const ALL_SECTION_KEYS = [
+  "loan", "property", "borrower", "trade", "contact", "closing", "dscr_calc", "additional", "data_tape", "intake_form",
+];
+const OPEN_FOR_OPPORTUNITY = ["intake_form"];
+const OPEN_FOR_ONBOARDING = ["loan", "property", "borrower"];
+
 const str = (v: unknown) => (v == null ? "" : String(v));
 
 /** Read-only display: currency with a $ and thousands separators, percent with a %. */
@@ -214,28 +223,28 @@ export function LoanData({
     };
   }, [canEdit, isLender, loan.id, router]);
 
-  // Collapsible section cards. All open by default except these three; the choice is
-  // remembered per browser.
+  // Collapsible section cards, defaulting open by phase (see the constants above). The choice
+  // is remembered per phase so an opportunity and a funded loan keep their own layouts.
+  const collapseKey = intakeAtTop ? "sphinx.loandata.collapsed.opp" : "sphinx.loandata.collapsed.ops";
   const [collapsed, setCollapsed] = useState<Set<string>>(
-    // For opportunities the intake snapshot leads and starts expanded; otherwise it's collapsed.
-    () => new Set(intakeAtTop ? ["additional", "data_tape"] : ["additional", "data_tape", "intake_form"]),
+    () => new Set(ALL_SECTION_KEYS.filter((k) => !(intakeAtTop ? OPEN_FOR_OPPORTUNITY : OPEN_FOR_ONBOARDING).includes(k))),
   );
   useEffect(() => {
     try {
-      const raw = localStorage.getItem("sphinx.loandata.collapsed");
+      const raw = localStorage.getItem(collapseKey);
       // eslint-disable-next-line react-hooks/set-state-in-effect
       if (raw) setCollapsed(new Set(JSON.parse(raw) as string[]));
     } catch {
       /* ignore */
     }
-  }, []);
+  }, [collapseKey]);
   function toggleSection(key: string) {
     setCollapsed((prev) => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key);
       else next.add(key);
       try {
-        localStorage.setItem("sphinx.loandata.collapsed", JSON.stringify([...next]));
+        localStorage.setItem(collapseKey, JSON.stringify([...next]));
       } catch {
         /* ignore */
       }
