@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { setUserType, addUser, resetUserPassword, type UserType } from "@/app/actions";
+import { setUserType, addUser, resetUserPassword, setUserActive, type UserType } from "@/app/actions";
 
 export type UserRow = {
   id: string;
@@ -12,6 +12,7 @@ export type UserRow = {
   is_lending_team: boolean;
   lender_user_type: "admin" | "operations" | "account_manager" | null;
   external_type: string | null;
+  deactivated: boolean;
 };
 
 const TYPES: { value: UserType; label: string }[] = [
@@ -180,6 +181,18 @@ function UserRowEditor({
   const [busy, setBusy] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [temp, setTemp] = useState<string | null>(null);
+  const [toggling, setToggling] = useState(false);
+
+  async function toggleActive() {
+    setToggling(true);
+    const res = await setUserActive({ userId: user.id, active: user.deactivated });
+    setToggling(false);
+    onSaved(
+      res.ok
+        ? `${user.email} ${user.deactivated ? "reactivated" : "deactivated"}.`
+        : res.error ?? "Failed.",
+    );
+  }
 
   async function save() {
     setBusy(true);
@@ -205,7 +218,10 @@ function UserRowEditor({
     <li className="card flex flex-col gap-2 p-4">
       <div className="flex items-center justify-between">
         <div>
-          <div className="font-medium text-fg">{user.full_name ?? user.email}</div>
+          <div className="flex items-center gap-2">
+            <span className="font-medium text-fg">{user.full_name ?? user.email}</span>
+            {user.deactivated && <span className="status-pill status-outstanding">Deactivated</span>}
+          </div>
           <div className="text-sm text-muted">{user.email}</div>
         </div>
         {isSelf && <span className="chip">you</span>}
@@ -231,6 +247,16 @@ function UserRowEditor({
         <button onClick={reset} disabled={resetting} className="btn btn-secondary text-sm">
           {resetting ? "Resetting…" : "Reset password"}
         </button>
+        {!isSelf && (
+          <button
+            onClick={toggleActive}
+            disabled={toggling}
+            className={`btn btn-ghost text-sm ${user.deactivated ? "" : "text-red-600"}`}
+            title={user.deactivated ? "Allow this user to sign in again" : "Block this user from signing in"}
+          >
+            {toggling ? "…" : user.deactivated ? "Reactivate" : "Deactivate"}
+          </button>
+        )}
       </div>
       {temp && (
         <p className="text-sm text-fg">

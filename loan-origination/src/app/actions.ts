@@ -1395,6 +1395,37 @@ export async function addUser(input: {
 }
 
 /**
+ * Admin: deactivate or reactivate a user. Deactivating bans them in auth so they can't sign
+ * in (reversible) while keeping the account and all their attribution intact; reactivating
+ * lifts the ban. Admin only, and you can't deactivate your own account.
+ */
+export async function setUserActive(input: {
+  userId: string;
+  active: boolean;
+}): Promise<{ ok: boolean; error?: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+  if (input.userId === user.id) return { ok: false, error: "You can't deactivate your own account." };
+  const { data: me } = await supabase
+    .from("profiles")
+    .select("lender_user_type")
+    .eq("id", user.id)
+    .single();
+  if (me?.lender_user_type !== "admin") return { ok: false, error: "Admins only." };
+
+  const admin = createServiceRoleClient();
+  const { error } = await admin.auth.admin.updateUserById(input.userId, {
+    // GoTrue ban: "none" lifts it; a long duration disables sign-in until reactivated.
+    ban_duration: input.active ? "none" : "876000h",
+  });
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
+}
+
+/**
  * Admin: reset an existing user's password to a fresh one-time temp password. The app sends
  * no email, so the returned password is shown once for the admin to hand over.
  */
