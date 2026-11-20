@@ -21,7 +21,7 @@ export default async function AdminHome() {
   const nav = navFor(session.profile);
 
   const library = [
-    { href: "/admin/intake", label: "Global Intake", hint: "Opening questions, style, examples" },
+    { href: "/admin/intake-links", label: "Intake Links", hint: "Shareable Sphinx & white-label intake links" },
     { href: "/admin/program-config", label: "Program Configuration", hint: "Import fields, documents & tasks per program" },
     { href: "/admin/document-types", label: "Document Types", hint: "Shared library for checklists" },
     { href: "/admin/pricing", label: "DSCR Pricing", hint: "Upload Eastview & Deephaven sizers" },
