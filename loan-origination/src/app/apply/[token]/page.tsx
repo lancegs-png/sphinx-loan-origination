@@ -1,5 +1,13 @@
+import type { Metadata } from "next";
 import { getActiveLink } from "@/lib/intake/links";
 import { PublicIntakeForm } from "@/components/public-intake-form";
+
+/** Per-branding browser-tab title, so a white-label link never shows "Sphinx Capital". */
+export async function generateMetadata({ params }: { params: Promise<{ token: string }> }): Promise<Metadata> {
+  const { token } = await params;
+  const link = await getActiveLink(token);
+  return { title: link?.branding === "sphinx" ? "Sphinx Capital" : "Loan Application" };
+}
 
 /**
  * Public, no-login intake form (Phase 3). Resolves the shareable link by token (service role)

@@ -23,6 +23,15 @@ export function PublicIntakeForm({ token, branding }: { token: string; branding:
     setValues((v) => ({ ...v, [key]: value }));
   }
 
+  // White-label forms must not name Sphinx anywhere — neutralize the one "source" option.
+  function brandedSpec(f: IntakeFieldSpec): IntakeFieldSpec {
+    if (sphinx || f.key !== "heard_about_us" || !f.options) return f;
+    return {
+      ...f,
+      options: f.options.map((o) => (o === "Someone at Sphinx Capital" ? "Someone at the company" : o)),
+    };
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (busy) return;
@@ -100,7 +109,7 @@ export function PublicIntakeForm({ token, branding }: { token: string; branding:
                     {section.fields
                       .filter((f) => !f.when || f.when(values))
                       .map((f) => (
-                        <Field key={f.key} spec={f} value={values[f.key] ?? ""} onChange={(v) => set(f.key, v)} />
+                        <Field key={f.key} spec={brandedSpec(f)} value={values[f.key] ?? ""} onChange={(v) => set(f.key, v)} />
                       ))}
                   </div>
                 </fieldset>
