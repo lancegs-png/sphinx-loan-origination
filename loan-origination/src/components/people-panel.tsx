@@ -1,7 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { saveLoanField, saveDealContacts } from "@/app/actions";
+import { addLoanGuarantor, setLoanEntity } from "@/app/guarantors/actions";
+import { GuarantorPicker, EntityPicker } from "@/components/party-picker";
 import type { DealContact, FieldValues, Participant } from "@/lib/types";
 
 function participantRoleLabel(role: string) {
@@ -50,21 +53,13 @@ export function PeoplePanel({
         </div>
       </Group>
 
+      <GuarantorsSection loanId={loanId} values={values} canEdit={canEdit} />
+
+      <EntitySection loanId={loanId} values={values} canEdit={canEdit} />
+
       {/* Contacts — all backed by the loan field store, so they're editable here and on Loan Info */}
       <Group title="Contacts">
         <div className="grid gap-3 sm:grid-cols-2">
-          <FixedContact
-            loanId={loanId}
-            label="Guarantor"
-            canEdit={canEdit}
-            values={values}
-            lines={[
-              { label: "First", key: "guarantor_first_name" },
-              { label: "Last", key: "guarantor_last_name" },
-              { label: "Email", key: "guarantor_email" },
-              { label: "Phone", key: "guarantor_phone" },
-            ]}
-          />
           <FixedContact
             loanId={loanId}
             label="Title / closing agent"
@@ -92,6 +87,109 @@ export function PeoplePanel({
 
       <ExtraContacts loanId={loanId} initial={initialContacts} canEdit={canEdit} />
     </div>
+  );
+}
+
+// Which guarantor slots (idx) have data on this loan, from the key#idx field store.
+function guarantorIdxs(values: FieldValues): number[] {
+  const idxs = new Set<number>();
+  for (const key of Object.keys(values)) {
+    const m = /^guarantor_(?:first_name|last_name|email|phone|ssn)(?:#(\d+))?$/.exec(key);
+    if (m && values[key]?.current) idxs.add(m[1] ? Number(m[1]) : 1);
+  }
+  idxs.add(1); // always show slot 1 (editable), even when empty
+  return [...idxs].sort((a, b) => a - b);
+}
+
+const GUAR_LINES = [
+  { label: "First", key: "guarantor_first_name" },
+  { label: "Last", key: "guarantor_last_name" },
+  { label: "Email", key: "guarantor_email" },
+  { label: "Phone", key: "guarantor_phone" },
+  { label: "SSN", key: "guarantor_ssn" },
+  { label: "DOB", key: "guarantor_date_of_birth" },
+  { label: "Address", key: "guarantor_mailing_address" },
+];
+
+function GuarantorsSection({ loanId, values, canEdit }: { loanId: string; values: FieldValues; canEdit: boolean }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const idxs = guarantorIdxs(values);
+  const extra = idxs.filter((i) => i > 1);
+
+  async function add(ids: string[]) {
+    const id = ids[ids.length - 1];
+    if (!id || busy) return;
+    setBusy(true);
+    const res = await addLoanGuarantor(loanId, id);
+    setBusy(false);
+    if (res.ok) router.refresh();
+  }
+
+  return (
+    <Group title="Guarantors">
+      <div className="grid gap-3 sm:grid-cols-2">
+        {/* Guarantor 1 is fully editable; additional guarantors show read-only (edit on Loan Info). */}
+        <FixedContact loanId={loanId} label="Guarantor" canEdit={canEdit} values={values} lines={GUAR_LINES} />
+        {extra.map((i) => {
+          const g = (base: string) => val(values, `${base}#${i}`);
+          const name = [g("guarantor_first_name"), g("guarantor_last_name")].filter(Boolean).join(" ");
+          return (
+            <div key={i} className="card p-3.5">
+              <div className="mb-2"><span className="chip">Guarantor {i}</span></div>
+              <p className="font-medium text-fg">{name || "—"}</p>
+              {g("guarantor_email") && <p className="text-sm text-muted">{g("guarantor_email")}</p>}
+              {g("guarantor_phone") && <p className="text-sm text-muted">{g("guarantor_phone")}</p>}
+            </div>
+          );
+        })}
+      </div>
+      {canEdit && (
+        <div className="mt-3 max-w-md">
+          <p className="mb-1 text-xs font-medium text-muted">Add a saved guarantor</p>
+          <GuarantorPicker value={[]} onChange={add} />
+        </div>
+      )}
+    </Group>
+  );
+}
+
+function EntitySection({ loanId, values, canEdit }: { loanId: string; values: FieldValues; canEdit: boolean }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+
+  async function pick(id: string | null) {
+    if (!id || busy) return;
+    setBusy(true);
+    const res = await setLoanEntity(loanId, id);
+    setBusy(false);
+    if (res.ok) router.refresh();
+  }
+
+  return (
+    <Group title="Borrowing entity">
+      <div className="grid gap-3 sm:grid-cols-2">
+        <FixedContact
+          loanId={loanId}
+          label="Entity"
+          canEdit={canEdit}
+          values={values}
+          lines={[
+            { label: "Name", key: "borrower_entity" },
+            { label: "EIN", key: "entity_ein" },
+            { label: "Type", key: "entity_type" },
+            { label: "State", key: "entity_state" },
+            { label: "Address", key: "entity_mailing_address" },
+          ]}
+        />
+      </div>
+      {canEdit && (
+        <div className="mt-3 max-w-md">
+          <p className="mb-1 text-xs font-medium text-muted">Use a saved entity</p>
+          <EntityPicker value={null} onChange={pick} />
+        </div>
+      )}
+    </Group>
   );
 }
 

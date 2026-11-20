@@ -154,3 +154,33 @@ export type DealContact = {
   email: string;
   phone: string;
 };
+
+// ---- Reusable party records (the Guarantors & Entities library). All string-valued for the
+// editors; the server actions map to/from the DB columns. ----
+export type Guarantor = {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  ssn: string;
+  dateOfBirth: string; // YYYY-MM-DD or ""
+  mailingAddress: string;
+};
+
+export type EntityMember = {
+  id?: string;
+  name: string;
+  ownershipPct: string; // percent as a string for the input
+  guarantorId: string | null;
+};
+
+export type Entity = {
+  id: string;
+  name: string;
+  ein: string;
+  mailingAddress: string;
+  entityType: string;
+  stateOfFormation: string;
+  members: EntityMember[];
+};

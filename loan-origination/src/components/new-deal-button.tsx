@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { openLoan } from "@/app/actions";
+import { GuarantorPicker, EntityPicker } from "@/components/party-picker";
 
 type Kind = "opportunity" | "loan";
 
@@ -16,8 +17,8 @@ export function NewDealButton({ className }: { className?: string }) {
   const [open, setOpen] = useState(false);
   const [kind, setKind] = useState<Kind>("opportunity");
   const [address, setAddress] = useState("");
-  const [first, setFirst] = useState("");
-  const [last, setLast] = useState("");
+  const [guarantorIds, setGuarantorIds] = useState<string[]>([]);
+  const [entityId, setEntityId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const addressRef = useRef<HTMLInputElement>(null);
@@ -39,8 +40,8 @@ export function NewDealButton({ className }: { className?: string }) {
   function reset() {
     setKind("opportunity");
     setAddress("");
-    setFirst("");
-    setLast("");
+    setGuarantorIds([]);
+    setEntityId(null);
     setError(null);
   }
 
@@ -49,7 +50,7 @@ export function NewDealButton({ className }: { className?: string }) {
     if (!address.trim() || busy) return;
     setBusy(true);
     setError(null);
-    const res = await openLoan({ address, guarantorFirst: first, guarantorLast: last, kind });
+    const res = await openLoan({ address, guarantorIds, entityId, kind });
     if (res.ok && res.id) {
       router.push(`/loans/${res.id}`);
       return; // leave the dialog up (busy) through the navigation
@@ -115,15 +116,14 @@ export function NewDealButton({ className }: { className?: string }) {
                 />
               </label>
 
-              <div className="grid grid-cols-2 gap-3">
-                <label className="flex flex-col gap-1">
-                  <span className="text-xs font-medium text-muted">Borrower first name</span>
-                  <input value={first} onChange={(e) => setFirst(e.target.value)} className="field" placeholder="Optional" />
-                </label>
-                <label className="flex flex-col gap-1">
-                  <span className="text-xs font-medium text-muted">Borrower last name</span>
-                  <input value={last} onChange={(e) => setLast(e.target.value)} className="field" placeholder="Optional" />
-                </label>
+              <div className="flex flex-col gap-1">
+                <span className="text-xs font-medium text-muted">Guarantor(s)</span>
+                <GuarantorPicker value={guarantorIds} onChange={setGuarantorIds} />
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <span className="text-xs font-medium text-muted">Borrowing entity</span>
+                <EntityPicker value={entityId} onChange={setEntityId} />
               </div>
 
               {error && <p className="text-sm text-red-600">{error}</p>}
