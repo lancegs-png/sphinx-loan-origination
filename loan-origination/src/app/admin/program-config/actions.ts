@@ -125,17 +125,58 @@ export async function importProgramConfig(formData: FormData): Promise<ImportRes
   // ---- Apply: documents (upsert types, then reconcile per-program membership) ----
   const docIdByKey = new Map<string, string>();
   if (parsed.documents.length) {
-    const typeRows = parsed.documents.map((d) => ({
-      key: d.key,
-      name: d.name,
-      default_review_rules: d.guidance,
-    }));
-    const { data: upserted, error } = await sb
-      .from("document_types")
-      .upsert(typeRows, { onConflict: "key" })
-      .select("id,key");
-    if (error) return { ok: false, applied: false, error: `Document types: ${error.message}` };
-    for (const row of upserted ?? []) docIdByKey.set(String(row.key), row.id as string);
+    // document_types is uniquely constrained on BOTH key and name. Reconcile each parsed doc
+    // against the existing library by key first, then by name — so a name that already exists
+    // under a different key reuses that row instead of violating the name unique constraint.
+    const { data: existingTypes } = await sb.from("document_types").select("id,key,name");
+    const byKey = new Map<string, { id: string; name: string }>();
+    const byName = new Map<string, string>(); // lowercased name -> id
+    for (const t of existingTypes ?? []) {
+      byKey.set(String(t.key), { id: t.id as string, name: String(t.name ?? "") });
+      if (t.name) byName.set(String(t.name).toLowerCase(), t.id as string);
+    }
+
+    for (const d of parsed.documents) {
+      const nameLc = d.name.toLowerCase();
+      const keyRow = byKey.get(d.key);
+      if (keyRow) {
+        // Row exists for this key. Update guidance; rename only when the new name isn't already
+        // taken by a different row (which would trip the name unique constraint).
+        const nameOwner = byName.get(nameLc);
+        const canRename = keyRow.name.toLowerCase() !== nameLc && (!nameOwner || nameOwner === keyRow.id);
+        const patch: Record<string, unknown> = { default_review_rules: d.guidance };
+        if (canRename) patch.name = d.name;
+        const { error } = await sb.from("document_types").update(patch).eq("id", keyRow.id);
+        if (error) return { ok: false, applied: false, error: `Document types: ${error.message}` };
+        docIdByKey.set(d.key, keyRow.id);
+        if (canRename) {
+          byName.delete(keyRow.name.toLowerCase());
+          byName.set(nameLc, keyRow.id);
+          keyRow.name = d.name;
+        }
+        continue;
+      }
+      const nameId = byName.get(nameLc);
+      if (nameId) {
+        // Same name already exists under a different key — reuse that type.
+        const { error } = await sb.from("document_types").update({ default_review_rules: d.guidance }).eq("id", nameId);
+        if (error) return { ok: false, applied: false, error: `Document types: ${error.message}` };
+        docIdByKey.set(d.key, nameId);
+        continue;
+      }
+      // New type.
+      const { data: ins, error } = await sb
+        .from("document_types")
+        .insert({ key: d.key, name: d.name, default_review_rules: d.guidance })
+        .select("id")
+        .single();
+      if (error || !ins) {
+        return { ok: false, applied: false, error: `Document types: ${error?.message ?? "insert failed"}` };
+      }
+      docIdByKey.set(d.key, ins.id as string);
+      byKey.set(d.key, { id: ins.id as string, name: d.name });
+      byName.set(nameLc, ins.id as string);
+    }
   }
 
   for (const key of matched) {

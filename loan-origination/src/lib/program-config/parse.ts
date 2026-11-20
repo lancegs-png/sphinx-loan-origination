@@ -61,6 +61,21 @@ function parseAssignedTo(v: string): string | null {
   return null;
 }
 
+// Friendly aliases for stage-bucket names, so common wordings the team types in the sheet
+// (e.g. "Post-Close" for the Closed bucket) import instead of being skipped.
+const BUCKET_ALIASES: Record<string, string> = {
+  "post-close": "closed",
+  "post_close": "closed",
+  "post close": "closed",
+  "postclose": "closed",
+  "post-closing": "closed",
+  "post closing": "closed",
+};
+function normalizeBucket(v: string): string {
+  const s = v.toLowerCase().trim();
+  return BUCKET_ALIASES[s] ?? s;
+}
+
 export type ParsedConfig = {
   fields: ParsedField[];
   documents: ParsedDocument[];
@@ -201,7 +216,7 @@ export async function parseProgramConfig(buffer: Buffer): Promise<ParsedConfig> 
     for (let r = 2; r <= tk.rowCount; r++) {
       const label = val(tk, r, header, "Label").trim();
       if (!label) continue;
-      const bucket = val(tk, r, header, "Stage bucket").toLowerCase().trim();
+      const bucket = normalizeBucket(val(tk, r, header, "Stage bucket"));
       if (!valid.has(bucket)) {
         warnings.push(`Task "${label}" on ${TASKS_TAB} row ${r} has an unknown stage bucket "${bucket}" — skipped.`);
         continue;
