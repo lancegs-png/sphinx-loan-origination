@@ -215,11 +215,13 @@ Every value submitted on the intake form is preserved as a **fixed, read-only sn
 
 On each new submission, notify the right originator/processor (in-app + email/Slack) so a fresh Opportunity gets eyes immediately — the direct fix for "falling through the cracks."
 
+**Scoping:** built in **Phase 3**, with the public form. For Phase 1 manual entry the creator is present and the deal lands in the pipeline instantly, so there's no one to alert; the gap only appears when external (broker/public) submissions arrive unattended. There is no email/Slack/in-app-alert infrastructure in the app today, so Phase 3 introduces it rather than Phase 1 guessing at it.
+
 ## 11. Phasing
 
 | Phase | Delivers | Kills |
 |---|---|---|
-| **1. Unified native form** | Universal + conditional form (from the dictionary), used for manual entry *and* public submission; opens a deal instantly + notifies; stores the immutable **Intake Form Data** snapshot (§7.1). **Retires the AI chat intake** (§3.1). | Internal double entry + latency |
+| **1. Unified native form** | Universal + conditional form, used for manual entry; opens an Opportunity instantly (derives the program), stores the immutable **Intake Form Data** snapshot (§7.1) and renders it read-only. **Retires the AI chat intake** (§3.1). Notifications move to Phase 3 (§10). | Internal double entry + latency |
 | **2. GHL sync** | `CrmProvider` → create contact/opportunity on `openDeal`, store ids, push stage changes | Double entry into GHL |
 | **3. Public links + white-label** | Per-originator tokens, white-label domain, spam protection | Brokers submit directly; no re-keying |
 
