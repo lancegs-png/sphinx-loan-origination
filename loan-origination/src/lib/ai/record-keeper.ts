@@ -90,7 +90,7 @@ export async function answerLoanQuestion(opts: {
       ? supabase.from("internal_notes").select("body,created_at").eq("loan_id", loanId)
       : Promise.resolve({ data: [] as { body: string; created_at: string }[] }),
     // The document checklist (statuses + notes) so the AI can answer what's outstanding.
-    loadLoanChecklist(supabase, loanId, loan.program_id),
+    loadLoanChecklist(supabase, loanId, loan.program_id, isLender),
     // Full loan field values + their definitions (labels/sections), and the people on the deal.
     loadFieldValues(supabase, loanId),
     supabase

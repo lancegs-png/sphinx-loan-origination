@@ -107,12 +107,12 @@ const DOCS = [
   ["Background Check (Personal/Business)", L, lender, "", true],
 ];
 const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
-const DOC_HEAD = ["Key", "Name", "Type", "Assignee", "Guidance", "Required", ...PROG_HEADERS];
-const docRows = DOCS.map(([name, category, assignee, guidance, required]) => [
+const DOC_HEAD = ["Key", "Name", "Type", "Access", "Guidance", "Required", ...PROG_HEADERS];
+const docRows = DOCS.map(([name, category, , guidance, required]) => [
   slug(name),
   name,
   category,
-  assignee,
+  "All", // Access / visibility: All (Lender + Borrower + Broker) or Lender Only
   guidance,
   required ? CHECK : null,
   ...progCells(new Set(["dscr"])), // seeded scope: current DSCR checklist
@@ -147,8 +147,16 @@ const TASKS = [
   ["closed", "Investor purchase confirmation"],
   ["closed", "File loan documents"],
 ];
-const TASK_HEAD = ["Stage bucket", "Label", ...PROG_HEADERS];
-const taskRows = TASKS.map(([bucket, label]) => [bucket, label, ...progCells(new Set(["dscr"]))]);
+const TASK_HEAD = ["Stage bucket", "Label", "Visibility", "Assigned To", ...PROG_HEADERS];
+// Tasks default to internal: Lender Only visibility, assigned to Lender. Open specific tasks
+// to the borrower/broker by setting Visibility = All.
+const taskRows = TASKS.map(([bucket, label]) => [
+  bucket,
+  label,
+  "Lender Only",
+  "Lender",
+  ...progCells(new Set(["dscr"])),
+]);
 addTab("Tasks", TASK_HEAD, taskRows);
 
 await wb.xlsx.writeFile(out);

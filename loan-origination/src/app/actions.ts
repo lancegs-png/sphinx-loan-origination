@@ -1217,6 +1217,7 @@ export type ChecklistItemInput = {
   required: boolean;
   assignee: "borrower" | "lending_team";
   category: string; // the document "Type" used to group the checklist (free text)
+  visibility: "all" | "lender_only"; // who sees it on the deal
   namingOverride: string;
   reviewRulesOverride: string;
 };
@@ -1239,6 +1240,7 @@ export async function saveProgramChecklist(
       required: it.required,
       assignee: it.assignee,
       category: it.category.trim() || null,
+      visibility: it.visibility === "lender_only" ? "lender_only" : "all",
       naming_override: it.namingOverride.trim() || null,
       review_rules_override: it.reviewRulesOverride.trim() || null,
       sort: i,
@@ -1249,7 +1251,20 @@ export async function saveProgramChecklist(
   return { ok: true };
 }
 
-export type StageTaskInput = { id?: string; stageBucket: string; label: string };
+export type StageTaskInput = {
+  id?: string;
+  stageBucket: string;
+  label: string;
+  visibility?: "all" | "lender_only";
+  assignedTo?: "lender" | "borrower" | "broker" | null;
+};
+
+function normVisibility(v: string | undefined): "all" | "lender_only" {
+  return v === "lender_only" ? "lender_only" : "all";
+}
+function normAssignedTo(v: string | null | undefined): string | null {
+  return v === "lender" || v === "borrower" || v === "broker" ? v : null;
+}
 
 /**
  * Admin: replace a program's stage-task checklist. Existing tasks (sent with their id) are
@@ -1271,19 +1286,27 @@ export async function saveProgramStageTasks(
 
   const counters: Record<string, number> = {};
   const keep = new Set<string>();
-  const updates: { id: string; stage_bucket: string; label: string; sort: number }[] = [];
-  const inserts: { program_id: string; stage_bucket: string; label: string; sort: number }[] = [];
+  type TaskRow = { stage_bucket: string; label: string; sort: number; visibility: string; assigned_to: string | null };
+  const updates: (TaskRow & { id: string })[] = [];
+  const inserts: (TaskRow & { program_id: string })[] = [];
 
   for (const t of tasks) {
     const label = t.label.trim();
     if (!label) continue;
     const sort = counters[t.stageBucket] ?? 0;
     counters[t.stageBucket] = sort + 1;
+    const common = {
+      stage_bucket: t.stageBucket,
+      label,
+      sort,
+      visibility: normVisibility(t.visibility),
+      assigned_to: normAssignedTo(t.assignedTo),
+    };
     if (t.id && existingIds.has(t.id)) {
       keep.add(t.id);
-      updates.push({ id: t.id, stage_bucket: t.stageBucket, label, sort });
+      updates.push({ id: t.id, ...common });
     } else {
-      inserts.push({ program_id: programId, stage_bucket: t.stageBucket, label, sort });
+      inserts.push({ program_id: programId, ...common });
     }
   }
 
@@ -1295,7 +1318,13 @@ export async function saveProgramStageTasks(
   for (const u of updates) {
     const { error } = await supabase
       .from("program_stage_tasks")
-      .update({ stage_bucket: u.stage_bucket, label: u.label, sort: u.sort })
+      .update({
+        stage_bucket: u.stage_bucket,
+        label: u.label,
+        sort: u.sort,
+        visibility: u.visibility,
+        assigned_to: u.assigned_to,
+      })
       .eq("id", u.id);
     if (error) return { ok: false, error: error.message };
   }
@@ -1618,7 +1647,8 @@ export async function applyLoanUpdates(input: {
   // Document checklist statuses — resolve each document name to its item.
   if (updates.checklist?.length) {
     const { data: loan } = await supabase.from("loans").select("program_id").eq("id", loanId).single();
-    const checklist = await loadLoanChecklist(supabase, loanId, loan?.program_id ?? null);
+    // Internal status update: resolve against the full checklist (lender view).
+    const checklist = await loadLoanChecklist(supabase, loanId, loan?.program_id ?? null, true);
     const byName = new Map(checklist.map((c) => [c.name.toLowerCase(), c]));
     const STATUS_LABEL: Record<string, string> = {
       outstanding: "Outstanding",

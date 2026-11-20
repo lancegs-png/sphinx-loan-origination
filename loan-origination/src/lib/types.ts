@@ -101,7 +101,8 @@ export type ChecklistItem = {
   documentTypeId: string;
   name: string;
   category: string | null;
-  assignee: string; // borrower | lending_team
+  assignee: string; // borrower | lending_team (kept for AI context; no longer shown in the UI)
+  visibility: string; // all | lender_only — who sees this document on the deal
   guidance: string | null;
   status: string; // doc_status: outstanding | ordered | update_needed | approved | not_applicable
   notes: string | null;
@@ -115,6 +116,8 @@ export type StageTask = {
   note: string | null;
   completedBy: string | null; // display name of who last completed it
   completedAt: string | null; // ISO timestamp
+  visibility: string; // all | lender_only — who sees this task on the deal
+  assignedTo: string | null; // lender | borrower | broker | null
 };
 
 /** Stage-checklist tasks for a loan, grouped by pipeline bucket. */

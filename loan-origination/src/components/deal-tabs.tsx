@@ -122,7 +122,7 @@ export function DealTabs({
   const tabs: { key: Tab; label: string; lenderOnly?: boolean }[] = [
     { key: "loan", label: "Loan Info" },
     { key: "documents", label: "Documents" },
-    { key: "checklist", label: "Checklist", lenderOnly: true },
+    { key: "checklist", label: "Checklist" },
     { key: "people", label: "People" },
     { key: "templates", label: "Templates", lenderOnly: true },
     { key: "notes", label: "Notes", lenderOnly: true },
@@ -169,7 +169,10 @@ export function DealTabs({
         </button>
         <div className="flex flex-col gap-0.5 px-2">
           {tabs
-            .filter((t) => !t.lenderOnly || isLender)
+            .filter((t) =>
+              // Borrowers/brokers see the Checklist tab only when they have visible ("all") tasks.
+              t.key === "checklist" ? isLender || stageTasks.length > 0 : !t.lenderOnly || isLender,
+            )
             .map((t) => {
               const active = tab === t.key;
               return (
@@ -224,7 +227,7 @@ export function DealTabs({
                 />
               )}
 
-              {tab === "checklist" && isLender && (
+              {tab === "checklist" && (isLender || stageTasks.length > 0) && (
                 <ChecklistPanel
                   loanId={loan.id}
                   currentStage={loan.stage}

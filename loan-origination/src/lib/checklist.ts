@@ -58,6 +58,7 @@ export async function loadLoanChecklist(
   client: SupabaseClient,
   loanId: string,
   programId: string | null,
+  isLender: boolean,
 ): Promise<ChecklistItem[]> {
   // Populate the checklist from the program on first view (idempotent), so documents
   // are available for upload starting at Intake.
@@ -75,9 +76,17 @@ export async function loadLoanChecklist(
     programId
       ? client
           .from("program_checklist_items")
-          .select("document_type_id,category,assignee,sort")
+          .select("document_type_id,category,assignee,visibility,sort")
           .eq("program_id", programId)
-      : Promise.resolve({ data: [] as { document_type_id: string; category: string | null; assignee: string; sort: number }[] }),
+      : Promise.resolve({
+          data: [] as {
+            document_type_id: string;
+            category: string | null;
+            assignee: string;
+            visibility: string;
+            sort: number;
+          }[],
+        }),
   ]);
   const docMap = Object.fromEntries((docs ?? []).map((d) => [d.id, d]));
   const pciMap = Object.fromEntries((pci ?? []).map((p) => [p.document_type_id, p]));
@@ -89,9 +98,12 @@ export async function loadLoanChecklist(
       name: docMap[i.document_type_id]?.name ?? "—",
       category: pciMap[i.document_type_id]?.category ?? null,
       assignee: pciMap[i.document_type_id]?.assignee ?? "borrower",
+      visibility: pciMap[i.document_type_id]?.visibility ?? "all",
       guidance: docMap[i.document_type_id]?.default_review_rules ?? null,
       status: i.status,
       notes: i.notes,
     }))
+    // Lender-only documents are hidden from borrowers / brokers.
+    .filter((it) => isLender || it.visibility !== "lender_only")
     .sort((a, b) => (pciMap[a.documentTypeId]?.sort ?? 0) - (pciMap[b.documentTypeId]?.sort ?? 0));
 }

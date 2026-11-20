@@ -29,6 +29,7 @@ export type ParsedDocument = {
   name: string;
   category: string | null;
   assignee: string;
+  visibility: string; // all | lender_only
   guidance: string | null;
   required: boolean;
   programs: string[];
@@ -37,8 +38,28 @@ export type ParsedDocument = {
 export type ParsedTask = {
   stageBucket: string;
   label: string;
+  visibility: string; // all | lender_only
+  assignedTo: string | null; // lender | borrower | broker | null
   programs: string[];
 };
+
+/** Normalize an Access/Visibility cell to 'all' | 'lender_only'. A blank cell takes `dflt`
+ *  (documents default to shared, tasks default to lender-only). */
+function parseVisibility(v: string, dflt: string): string {
+  const s = v.trim().toLowerCase();
+  if (!s) return dflt;
+  if (s.includes("lender")) return "lender_only";
+  return "all";
+}
+
+/** Normalize an "Assigned To" cell to lender | borrower | broker | null. */
+function parseAssignedTo(v: string): string | null {
+  const s = v.trim().toLowerCase();
+  if (s === "lender" || s === "lending_team" || s === "lending team") return "lender";
+  if (s === "borrower") return "borrower";
+  if (s === "broker" || s === "originator") return "broker";
+  return null;
+}
 
 export type ParsedConfig = {
   fields: ParsedField[];
@@ -160,6 +181,8 @@ export async function parseProgramConfig(buffer: Buffer): Promise<ParsedConfig> 
         // "Type" is the grouping column; accept the legacy "Category" header too.
         category: val(dt, r, header, "Type") || val(dt, r, header, "Category") || null,
         assignee: assignee === "lending_team" || assignee === "lender" ? "lending_team" : "borrower",
+        // "Access" is the visibility column; accept "Visibility" too. Documents default to shared.
+        visibility: parseVisibility(val(dt, r, header, "Access") || val(dt, r, header, "Visibility"), "all"),
         guidance: val(dt, r, header, "Guidance") || null,
         required: isChecked(val(dt, r, header, "Required")),
         programs: checkedPrograms(dt, r, header),
@@ -183,7 +206,13 @@ export async function parseProgramConfig(buffer: Buffer): Promise<ParsedConfig> 
         warnings.push(`Task "${label}" on ${TASKS_TAB} row ${r} has an unknown stage bucket "${bucket}" — skipped.`);
         continue;
       }
-      tasks.push({ stageBucket: bucket, label, programs: checkedPrograms(tk, r, header) });
+      tasks.push({
+        stageBucket: bucket,
+        label,
+        visibility: parseVisibility(val(tk, r, header, "Visibility") || val(tk, r, header, "Access"), "lender_only"),
+        assignedTo: parseAssignedTo(val(tk, r, header, "Assigned To") || val(tk, r, header, "Assigned")),
+        programs: checkedPrograms(tk, r, header),
+      });
     }
   }
 

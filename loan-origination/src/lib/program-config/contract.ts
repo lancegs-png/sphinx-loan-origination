@@ -46,8 +46,8 @@ export const LOAN_DATA_LEAD = [
   "Repeat",
   "Lender only",
 ];
-export const DOCUMENTS_LEAD = ["Key", "Name", "Type", "Assignee", "Guidance", "Required"];
-export const TASKS_LEAD = ["Stage bucket", "Label"];
+export const DOCUMENTS_LEAD = ["Key", "Name", "Type", "Access", "Guidance", "Required"];
+export const TASKS_LEAD = ["Stage bucket", "Label", "Visibility", "Assigned To"];
 
 export const LOAN_DATA_HEADERS = [...LOAN_DATA_LEAD, ...PROGRAM_COLUMNS.map((c) => c.header)];
 export const DOCUMENTS_HEADERS = [...DOCUMENTS_LEAD, ...PROGRAM_COLUMNS.map((c) => c.header)];
