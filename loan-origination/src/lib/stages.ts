@@ -3,6 +3,7 @@ export const STAGES = [
   { key: "intake", label: "Intake" },
   { key: "pre_qualification", label: "Pre-Qual" },
   { key: "quote_term_sheet", label: "Quote & Term Sheet" },
+  { key: "onboarding", label: "Onboarding" },
   { key: "processing", label: "Processing" },
   { key: "underwriting", label: "Underwriting" },
   { key: "final_approval", label: "Final Approval" },
@@ -28,6 +29,7 @@ export function stageIndex(key: string): number {
 export const STAGE_BUCKETS = [
   { key: "opportunity", label: "Opportunity", stages: ["intake", "pre_qualification"] },
   { key: "quoted", label: "Quoted", stages: ["quote_term_sheet"] },
+  { key: "onboarding", label: "Onboarding", stages: ["onboarding"] },
   { key: "processing", label: "Processing", stages: ["processing"] },
   { key: "underwriting", label: "Underwriting", stages: ["underwriting", "final_approval"] },
   { key: "closing", label: "Closing", stages: ["closing"] },

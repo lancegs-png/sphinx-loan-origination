@@ -8,6 +8,7 @@ const VALID_STAGES = new Set([
   "intake",
   "pre_qualification",
   "quote_term_sheet",
+  "onboarding",
   "processing",
   "underwriting",
   "final_approval",

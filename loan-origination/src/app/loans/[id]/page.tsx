@@ -32,7 +32,7 @@ function fieldAppliesToProgram(def: FieldDef, programKey: string | null, values:
 export const maxDuration = 60;
 
 const STAGE_ORDER = [
-  "intake", "pre_qualification", "quote_term_sheet", "processing",
+  "intake", "pre_qualification", "quote_term_sheet", "onboarding", "processing",
   "underwriting", "final_approval", "closing", "post_close",
 ];
 

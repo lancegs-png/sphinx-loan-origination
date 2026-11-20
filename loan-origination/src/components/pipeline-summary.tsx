@@ -35,7 +35,7 @@ export function PipelineSummary({
   });
 
   return (
-    <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+    <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
       {stats.map((s) => {
         const active = activeBucket === s.key;
         return (

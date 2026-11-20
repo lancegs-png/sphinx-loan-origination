@@ -27,6 +27,7 @@ export const TASKS_TAB = "Tasks";
 export const STAGE_BUCKETS_ORDER = [
   "opportunity",
   "quoted",
+  "onboarding",
   "processing",
   "underwriting",
   "closing",
