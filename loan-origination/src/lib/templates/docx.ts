@@ -64,6 +64,10 @@ export async function buildTemplateData(
   };
 
   const out: Record<string, string> = {};
+  // Seed every dictionary field as blank first, so an unset field still produces a tag in the
+  // map. The Google-Doc render path only replaces {{keys}} present here (unlike the bundled-docx
+  // nullGetter), so without this an unfilled field renders as a literal {{tag}} in the PDF.
+  for (const d of defs ?? []) out[d.key] = "";
   for (const [k, cell] of Object.entries(fv)) {
     if (k.includes("#")) continue; // idx 1 only for these templates
     out[k] = fmt(k, cell.current);
