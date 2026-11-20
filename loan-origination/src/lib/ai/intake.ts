@@ -15,8 +15,8 @@ export type IntakeFields = {
     | "fix_and_flip"
     | "new_construction"
     | "dscr"
-    | "rtl"
     | "commercial_bridge"
+    | "commercial_new_construction"
     | "commercial_permanent";
   notes?: string;
   // Captured values keyed by data-dictionary field keys (the configured intake fields).
@@ -56,13 +56,18 @@ export type GlobalIntakeConfig = {
  *  A miss just means the program layer applies on the next turn. */
 export function detectLoanTypeKey(text: string): IntakeFields["loan_type_key"] | null {
   const t = text.toLowerCase();
-  if (/commercial.*(permanent|perm)/.test(t)) return "commercial_permanent";
-  if (/commercial.*bridge/.test(t)) return "commercial_bridge";
-  if (/\bdscr\b|rental|buy.?and.?hold/.test(t)) return "dscr";
-  // Fix & flip, bridge, and new construction all map to the RTL program.
-  if (/fix.{0,4}(and|&|n).{0,4}flip|\bflip\b|new construction|ground.?up|\bconstruction\b|\bbridge\b|\brtl\b|rehab/.test(t)) {
-    return "rtl";
+  // Commercial first — the word "commercial" picks the asset class, then the subtype.
+  if (/commercial/.test(t)) {
+    if (/permanent|perm|long.?term/.test(t)) return "commercial_permanent";
+    if (/new construction|ground.?up|\bconstruction\b/.test(t)) return "commercial_new_construction";
+    if (/bridge/.test(t)) return "commercial_bridge";
+    return "commercial_bridge"; // default commercial subtype
   }
+  // Residential subtypes.
+  if (/\bdscr\b|rental|buy.?and.?hold/.test(t)) return "dscr";
+  if (/fix.{0,4}(and|&|n).{0,4}flip|\bflip\b|rehab/.test(t)) return "fix_and_flip";
+  if (/new construction|ground.?up|\bconstruction\b/.test(t)) return "new_construction";
+  if (/\bbridge\b|\brtl\b/.test(t)) return "bridge";
   return null;
 }
 
@@ -83,11 +88,12 @@ const recordIntakeTool: Anthropic.Tool = {
           "fix_and_flip",
           "new_construction",
           "dscr",
-          "rtl",
           "commercial_bridge",
+          "commercial_new_construction",
           "commercial_permanent",
         ],
-        description: "The loan program. DSCR for rentals; RTL for fix & flip / bridge / new construction.",
+        description:
+          "The loan program. Residential: bridge, fix_and_flip, new_construction, dscr (rentals / buy-and-hold). Commercial: commercial_bridge, commercial_new_construction, commercial_permanent.",
       },
       notes: { type: "string" },
       fields: {
@@ -138,7 +144,7 @@ const BASE_SYSTEM = [
   "You are the AI originator for a private loan platform, conducting intake for a NEW loan in a chat.",
   "Guide a natural, one-step-at-a-time conversation, keeping replies short and friendly:",
   "- First, if not yet known, ask whether they are the borrower or an originator (broker / referral partner); record submitter_role. If an originator, also gather the borrower's contact.",
-  "- Early on, determine the loan program and record it as loan_type_key: DSCR (rental / buy-and-hold) or RTL (fix & flip, bridge, or new construction). Multifamily properties use DSCR.",
+  "- Early on, determine the asset class (residential or commercial) and the specific program, and record it as loan_type_key. Residential: bridge, fix_and_flip, new_construction, or dscr (rental / buy-and-hold; multifamily rentals use dscr). Commercial: commercial_bridge, commercial_new_construction, or commercial_permanent (long-term). Ask a brief clarifying question if the subtype is ambiguous.",
   "- Then work through the gather lists below, one item at a time.",
   "Record every captured value by calling record_intake with a `fields` object keyed by the data-dictionary keys shown in the lists (e.g. { \"property_street\": \"123 Main St\", \"borrower_entity\": \"Acme LLC\" }). Confirm what you captured in one short line, then ask for the next single missing item.",
   "When you have the program, property, borrower/guarantor, and the program's key inputs, give a brief summary and tell them a team member will follow up with a quote within 24 hours.",
@@ -194,8 +200,8 @@ const PROGRAM_LABEL: Record<NonNullable<IntakeFields["loan_type_key"]>, string> 
   fix_and_flip: "Fix and Flip",
   new_construction: "New Construction",
   dscr: "DSCR",
-  rtl: "RTL",
   commercial_bridge: "Commercial Bridge",
+  commercial_new_construction: "Commercial New Construction",
   commercial_permanent: "Commercial Permanent",
 };
 

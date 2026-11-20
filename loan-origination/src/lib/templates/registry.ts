@@ -175,8 +175,16 @@ export function templateReadiness(
   return { ready: missing.length === 0, missing };
 }
 
+// The residential transitional programs share the "rtl" template set (fix & flip, bridge,
+// and new construction request the same documents). Maps a program key to the template
+// `program` tags it should match. (Commercial programs get only "both" templates until the
+// registry is migrated off these coarse tags.)
+const RTL_PROGRAM_KEYS = new Set(["bridge", "fix_and_flip", "new_construction"]);
+
 /** Templates applicable to a loan's program (program-specific + "both"). */
 export function templatesForProgram(programKey: string | null): TemplateDef[] {
   const p = (programKey ?? "").toLowerCase();
-  return TEMPLATES.filter((t) => t.program === "both" || t.program === p);
+  const tags = new Set<string>(["both", p]);
+  if (RTL_PROGRAM_KEYS.has(p)) tags.add("rtl");
+  return TEMPLATES.filter((t) => tags.has(t.program));
 }

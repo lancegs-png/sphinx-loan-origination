@@ -1,5 +1,5 @@
 // P17: set the intake field lists (dictionary keys) that drive the chat intake —
-// global base fields + per-program (DSCR, RTL) adds. Idempotent. Brief §5.
+// global base fields + per-program adds (the canonical 7 loan_type_keys). Idempotent. Brief §5.
 import { readFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
 
@@ -21,6 +21,19 @@ const DSCR = ["monthly_rent", "annual_taxes", "annual_insurance", "annual_hoa"];
 const RTL = ["purchase_price", "rehab_budget", "arv", "experience_property_count"];
 const NOT_REQUIRED = new Set(["payoff_amount"]); // refinance only
 
+// Per-program intake field adds, keyed to the canonical 7 loan_type_keys. Income-qualified
+// programs (dscr, commercial_permanent) use the DSCR set; transitional programs use the RTL
+// set. This is a starting point — Phase 2's program-config import becomes the source of truth.
+const PROGRAM_FIELDS = [
+  ["bridge", RTL],
+  ["fix_and_flip", RTL],
+  ["new_construction", RTL],
+  ["dscr", DSCR],
+  ["commercial_bridge", RTL],
+  ["commercial_new_construction", RTL],
+  ["commercial_permanent", DSCR],
+];
+
 const { data: defs } = await sb.from("field_definitions").select("key,label,type,options");
 const DEF = Object.fromEntries((defs || []).map((d) => [d.key, d]));
 
@@ -41,7 +54,7 @@ await sb.from("app_settings").upsert({ key: "intake_global", value: gVal, update
 console.log("global base_fields:", gVal.base_fields.length);
 
 // 2. Per-program adds.
-for (const [typeKey, keys] of [["dscr", DSCR], ["rtl", RTL]]) {
+for (const [typeKey, keys] of PROGRAM_FIELDS) {
   const { data: prog } = await sb.from("loan_programs").select("id").eq("loan_type_key", typeKey).maybeSingle();
   if (!prog) { console.warn("  !! no program for", typeKey); continue; }
   const { data: existing } = await sb.from("program_ai_config").select("program_id").eq("program_id", prog.id).maybeSingle();

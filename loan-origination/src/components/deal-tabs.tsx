@@ -243,6 +243,9 @@ export function DealTabs({
                 />
               )}
 
+              {/* Quote is keyed off the loan's program: DSCR gets the two-investor sizer panel;
+                  every other program gets the generic panel, priced from that program's own
+                  rate/fee grid (Settings → the program → Pricing). */}
               {tab === "quote" && isLender &&
                 (/dscr/i.test(String(loan.loan_program ?? loan.loan_type ?? "")) ? (
                   <DualQuotePanel loan={loan} values={fieldValues} />

@@ -22,13 +22,14 @@ begin
          full_name = coalesce(full_name, 'Lance (Admin)')
    where id = admin_id;
 
-  insert into public.loan_programs (name, loan_type_key, public_info) values
-    ('Bridge', 'bridge', 'Short-term bridge financing secured by real estate.'),
-    ('Fix and Flip', 'fix_and_flip', 'Acquisition plus rehab financing for resale.'),
-    ('New Construction', 'new_construction', 'Ground-up construction financing.'),
-    ('DSCR', 'dscr', 'Rental loans qualified on property cash flow.'),
-    ('Commercial Bridge', 'commercial_bridge', 'Short-term commercial property financing.'),
-    ('Commercial Permanent', 'commercial_permanent', 'Long-term commercial financing.')
+  insert into public.loan_programs (name, loan_type_key, public_info, asset_class, sort) values
+    ('Bridge', 'bridge', 'Short-term bridge financing secured by real estate.', 'residential', 0),
+    ('Fix and Flip', 'fix_and_flip', 'Acquisition plus rehab financing for resale.', 'residential', 1),
+    ('New Construction', 'new_construction', 'Ground-up construction financing.', 'residential', 2),
+    ('DSCR', 'dscr', 'Rental loans qualified on property cash flow.', 'residential', 3),
+    ('Commercial Bridge', 'commercial_bridge', 'Short-term commercial property financing.', 'commercial', 4),
+    ('Commercial New Construction', 'commercial_new_construction', 'Ground-up commercial construction financing.', 'commercial', 5),
+    ('Commercial Permanent', 'commercial_permanent', 'Long-term commercial financing.', 'commercial', 6)
   on conflict (loan_type_key) do nothing;
 
   select id into prog_id from public.loan_programs where loan_type_key = 'dscr';

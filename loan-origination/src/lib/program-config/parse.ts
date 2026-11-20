@@ -1,0 +1,190 @@
+import "server-only";
+import ExcelJS from "exceljs";
+import {
+  PROGRAM_COLUMNS,
+  PROGRAM_KEYS,
+  LOAN_DATA_TAB,
+  DOCUMENTS_TAB,
+  TASKS_TAB,
+  STAGE_BUCKETS_ORDER,
+  isChecked,
+} from "./contract";
+
+export type ParsedField = {
+  key: string;
+  label: string;
+  section: string;
+  type: string;
+  options: string[];
+  source: string | null;
+  requiredStage: string | null;
+  repeatGroup: string | null;
+  lenderOnly: boolean;
+  programs: string[]; // checked program keys ([] when none; "all 7" is normalized by the importer)
+  allPrograms: boolean; // every program column checked → applies to all
+};
+
+export type ParsedDocument = {
+  key: string;
+  name: string;
+  category: string | null;
+  assignee: string;
+  guidance: string | null;
+  required: boolean;
+  programs: string[];
+};
+
+export type ParsedTask = {
+  stageBucket: string;
+  label: string;
+  programs: string[];
+};
+
+export type ParsedConfig = {
+  fields: ParsedField[];
+  documents: ParsedDocument[];
+  tasks: ParsedTask[];
+  warnings: string[];
+};
+
+/** Flatten any ExcelJS cell value (string, number, boolean, date, formula, rich text) to text. */
+function cellToStr(v: ExcelJS.CellValue): string {
+  if (v == null) return "";
+  if (typeof v === "string") return v.trim();
+  if (typeof v === "number") return String(v);
+  if (typeof v === "boolean") return v ? "true" : "false";
+  if (v instanceof Date) return v.toISOString();
+  if (typeof v === "object") {
+    const o = v as unknown as Record<string, unknown>;
+    if ("result" in o) return cellToStr(o.result as ExcelJS.CellValue);
+    if ("richText" in o && Array.isArray(o.richText)) {
+      return (o.richText as { text: string }[]).map((r) => r.text).join("").trim();
+    }
+    if ("text" in o) return String(o.text).trim();
+  }
+  return "";
+}
+
+/** Map header text (row 1, lowercased) → 1-based column index. */
+function headerMap(ws: ExcelJS.Worksheet): Map<string, number> {
+  const map = new Map<string, number>();
+  ws.getRow(1).eachCell({ includeEmpty: false }, (cell, col) => {
+    const h = cellToStr(cell.value).toLowerCase();
+    if (h) map.set(h, col);
+  });
+  return map;
+}
+
+function val(ws: ExcelJS.Worksheet, row: number, header: Map<string, number>, name: string): string {
+  const col = header.get(name.toLowerCase());
+  return col ? cellToStr(ws.getRow(row).getCell(col).value) : "";
+}
+
+/** Which program keys are checked on this row (by the 7 program column headers). */
+function checkedPrograms(ws: ExcelJS.Worksheet, row: number, header: Map<string, number>): string[] {
+  const keys: string[] = [];
+  for (const col of PROGRAM_COLUMNS) {
+    const c = header.get(col.header.toLowerCase());
+    if (c && isChecked(cellToStr(ws.getRow(row).getCell(c).value))) keys.push(col.key);
+  }
+  return keys;
+}
+
+function slug(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+}
+
+/**
+ * Parse an exported Program Configuration workbook (.xlsx) into typed field / document / task
+ * rows plus the per-program toggles. Pure: it reads the file and reports structure problems as
+ * warnings; it does not touch the database. Uses ExcelJS's standard loader (the file is small),
+ * which handles both Excel- and Google-Sheets-exported workbooks.
+ */
+export async function parseProgramConfig(buffer: Buffer): Promise<ParsedConfig> {
+  const wb = new ExcelJS.Workbook();
+  // ExcelJS's type wants an ArrayBuffer; a Node Buffer works at runtime.
+  await wb.xlsx.load(buffer as unknown as ArrayBuffer);
+  const warnings: string[] = [];
+
+  // ---- Loan Data ----
+  const fields: ParsedField[] = [];
+  const ld = wb.getWorksheet(LOAN_DATA_TAB);
+  if (!ld) {
+    warnings.push(`Missing "${LOAN_DATA_TAB}" tab — no fields imported.`);
+  } else {
+    const header = headerMap(ld);
+    if (!header.has("key")) warnings.push(`"${LOAN_DATA_TAB}" tab has no "Key" column.`);
+    const seen = new Set<string>();
+    for (let r = 2; r <= ld.rowCount; r++) {
+      const key = val(ld, r, header, "Key").trim();
+      if (!key) continue;
+      if (seen.has(key)) warnings.push(`Duplicate field key "${key}" on ${LOAN_DATA_TAB} row ${r} — last one wins.`);
+      seen.add(key);
+      const programs = checkedPrograms(ld, r, header);
+      const optionsRaw = val(ld, r, header, "Options");
+      fields.push({
+        key,
+        label: val(ld, r, header, "Label") || key,
+        section: (val(ld, r, header, "Section") || "loan").toLowerCase(),
+        type: (val(ld, r, header, "Type") || "text").toLowerCase(),
+        options: optionsRaw ? optionsRaw.split(",").map((o) => o.trim()).filter(Boolean) : [],
+        source: val(ld, r, header, "Source").toLowerCase() || null,
+        requiredStage: val(ld, r, header, "Stage") || null,
+        repeatGroup: val(ld, r, header, "Repeat") || null,
+        lenderOnly: isChecked(val(ld, r, header, "Lender only")),
+        programs,
+        allPrograms: programs.length === PROGRAM_KEYS.length,
+      });
+    }
+  }
+
+  // ---- Documents ----
+  const documents: ParsedDocument[] = [];
+  const dt = wb.getWorksheet(DOCUMENTS_TAB);
+  if (!dt) {
+    warnings.push(`Missing "${DOCUMENTS_TAB}" tab — no documents imported.`);
+  } else {
+    const header = headerMap(dt);
+    const seen = new Set<string>();
+    for (let r = 2; r <= dt.rowCount; r++) {
+      const name = val(dt, r, header, "Name").trim();
+      let key = val(dt, r, header, "Key").trim();
+      if (!name && !key) continue;
+      if (!key) key = slug(name);
+      if (seen.has(key)) warnings.push(`Duplicate document key "${key}" on ${DOCUMENTS_TAB} row ${r}.`);
+      seen.add(key);
+      const assignee = val(dt, r, header, "Assignee").toLowerCase();
+      documents.push({
+        key,
+        name: name || key,
+        category: val(dt, r, header, "Category") || null,
+        assignee: assignee === "lending_team" || assignee === "lender" ? "lending_team" : "borrower",
+        guidance: val(dt, r, header, "Guidance") || null,
+        required: isChecked(val(dt, r, header, "Required")),
+        programs: checkedPrograms(dt, r, header),
+      });
+    }
+  }
+
+  // ---- Tasks ----
+  const tasks: ParsedTask[] = [];
+  const tk = wb.getWorksheet(TASKS_TAB);
+  if (!tk) {
+    warnings.push(`Missing "${TASKS_TAB}" tab — no tasks imported.`);
+  } else {
+    const header = headerMap(tk);
+    const valid = new Set<string>(STAGE_BUCKETS_ORDER);
+    for (let r = 2; r <= tk.rowCount; r++) {
+      const label = val(tk, r, header, "Label").trim();
+      if (!label) continue;
+      const bucket = val(tk, r, header, "Stage bucket").toLowerCase().trim();
+      if (!valid.has(bucket)) {
+        warnings.push(`Task "${label}" on ${TASKS_TAB} row ${r} has an unknown stage bucket "${bucket}" — skipped.`);
+        continue;
+      }
+      tasks.push({ stageBucket: bucket, label, programs: checkedPrograms(tk, r, header) });
+    }
+  }
+
+  return { fields, documents, tasks, warnings };
+}
