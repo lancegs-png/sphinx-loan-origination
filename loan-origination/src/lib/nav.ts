@@ -9,6 +9,7 @@ import type { Profile } from "@/lib/types";
 export function navFor(profile?: Pick<Profile, "lender_user_type"> | null): NavItem[] {
   const nav: NavItem[] = [{ href: "/", label: "Pipeline", icon: "pipeline", match: "exact" }];
   if (profile?.lender_user_type) {
+    nav.push({ href: "/intake", label: "New Intake", icon: "pipeline", match: "prefix" });
     nav.push({ href: "/guarantors", label: "Guarantors & Entities", icon: "people", match: "prefix" });
   }
   if (profile?.lender_user_type === "admin") {

@@ -1,6 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { upsertFieldValue } from "@/lib/fields";
+import { upsertFieldValue, writeIntakeFields } from "@/lib/fields";
+import { deriveProgram } from "@/lib/intake/form-spec";
 import { copyPartiesToLoan } from "@/lib/parties";
 import { recomputeLoan } from "@/lib/calc";
 import { ensureProgramAndChecklist } from "@/lib/checklist-seed";
@@ -77,6 +78,8 @@ export type OpenDealInput = {
   /** App path: the creating lender — sets created_by, adds them as a participant, greets. */
   createdByUserId?: string | null;
   accountManagerId?: string | null;
+  /** Full intake-form submission: stored as an immutable snapshot and seeded as field values. */
+  intake?: Record<string, unknown> | null;
 };
 
 export type OpenDealResult = {
@@ -135,12 +138,38 @@ export async function openDeal(
     }
   }
 
-  // 2. Create the loan row (DSCR; the DB assigns the OPP#### opportunity number).
+  // 2. Create the loan row (the DB assigns the OPP#### opportunity number). When an intake
+  //    submission is supplied, derive the program from it (§5.1) and resolve its program_id
+  //    so the right checklist seeds; the exact payload is also frozen on custom_fields as the
+  //    read-only Intake Form Data snapshot. Without intake, default to DSCR as before.
+  const intake = input.intake ?? null;
+  const derived = intake ? deriveProgram(intake) : null;
+  let programId: string | null = null;
+  if (derived) {
+    const { data: prog } = await admin
+      .from("loan_programs")
+      .select("id")
+      .eq("loan_type_key", derived.key)
+      .maybeSingle();
+    programId = (prog?.id as string | undefined) ?? null;
+  }
   const { data: loan, error } = await admin
     .from("loans")
     .insert({
       stage,
-      loan_type: "DSCR",
+      loan_type: derived?.label ?? "DSCR",
+      ...(programId ? { program_id: programId } : {}),
+      ...(intake
+        ? {
+            custom_fields: {
+              intake_snapshot: {
+                submitted_at: new Date().toISOString(),
+                source: "intake_form",
+                values: intake,
+              },
+            },
+          }
+        : {}),
       drive_folder_id: driveFolderId,
       sheet_id: sheetId,
       ...(input.createdByUserId ? { created_by: input.createdByUserId } : {}),
@@ -157,12 +186,25 @@ export async function openDeal(
     ["property_city", city],
     ["property_state", state],
     ["property_zip", zip],
-    ["loan_program", "DSCR"],
+    ["loan_program", derived?.loanProgram ?? "DSCR"],
     ["guarantor_first_name", guarantorFirst],
     ["guarantor_last_name", guarantorLast],
   ];
   for (const [key, value] of fields) {
     if (value) await upsertFieldValue(admin, { loanId: loan.id, key, valueKind: "initial", value });
+  }
+  // Seed the full intake submission as initial field values. Known dictionary keys only —
+  // any new keys not yet imported into field_definitions are skipped here but preserved in
+  // the snapshot, and seed on the next Program Config re-import.
+  if (intake) {
+    const { data: defRows } = await admin.from("field_definitions").select("key,type,source");
+    const defs = Object.fromEntries(
+      (defRows ?? []).map((d) => [
+        d.key as string,
+        { type: String(d.type), source: (d.source as string | null) ?? null },
+      ]),
+    );
+    await writeIntakeFields(admin, loan.id, intake, defs).catch(() => {});
   }
   // Snapshot any selected library guarantors/entity onto the loan (overwrites the bare
   // guarantor name seeded above with the full saved records).
