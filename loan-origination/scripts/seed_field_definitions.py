@@ -15,7 +15,7 @@ import argparse, json, os, re, sys, urllib.request
 import openpyxl
 
 VALID_STAGES = {
-    "intake", "pre_qualification", "quote_term_sheet", "processing",
+    "intake", "pre_qualification", "quote_term_sheet", "onboarding", "processing",
     "underwriting", "final_approval", "closing", "post_close",
 }
 VALID_SOURCES = {"intake", "manual", "calculated", "system", "config"}
