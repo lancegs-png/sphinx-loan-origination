@@ -44,11 +44,14 @@ export type ParsedTask = {
 };
 
 /** Normalize an Access/Visibility cell to 'all' | 'lender_only'. A blank cell takes `dflt`
- *  (documents default to shared, tasks default to lender-only). */
+ *  (documents default to shared, tasks default to lender-only). Anything that names the
+ *  lending team — "lender", "lender only", "lending_team", "lending team" — is lender-only;
+ *  "both", "all", "shared" and the like are visible to everyone. Matching on the "lend" stem
+ *  is deliberate so "lending_team" (which does not contain the exact word "lender") maps right. */
 function parseVisibility(v: string, dflt: string): string {
   const s = v.trim().toLowerCase();
   if (!s) return dflt;
-  if (s.includes("lender")) return "lender_only";
+  if (s.includes("lend")) return "lender_only";
   return "all";
 }
 
