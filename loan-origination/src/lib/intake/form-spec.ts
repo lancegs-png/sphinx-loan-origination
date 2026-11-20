@@ -22,6 +22,8 @@ export type IntakeFieldSpec = {
   placeholder?: string;
   help?: string;
   half?: boolean; // render two-up on wide screens
+  /** Show this field only when the predicate passes (always shown when absent). */
+  when?: (v: Record<string, string>) => boolean;
 };
 
 export type IntakeSectionSpec = {
@@ -36,8 +38,10 @@ export type IntakeSectionSpec = {
 // Predicates over the current form values (all values are strings in the form state).
 const isPurchase = (v: Record<string, string>) => /purchase/i.test(v.loan_purpose ?? "");
 const isRefinance = (v: Record<string, string>) => /refinance/i.test(v.loan_purpose ?? "");
+const isShortTerm = (v: Record<string, string>) => /short/i.test(v.term_preference ?? "");
 const isLongTerm = (v: Record<string, string>) => /long/i.test(v.term_preference ?? "");
-const hasProject = (v: Record<string, string>) => /construction|renovation/i.test(v.rehab_type ?? "");
+// Renovation/construction only applies to short-term loans, so the project block requires it.
+const hasProject = (v: Record<string, string>) => isShortTerm(v) && /construction|renovation/i.test(v.rehab_type ?? "");
 
 export const INTAKE_FORM_SPEC: IntakeSectionSpec[] = [
   {
@@ -104,6 +108,7 @@ export const INTAKE_FORM_SPEC: IntakeSectionSpec[] = [
         type: "select",
         options: ["None", "Renovation", "Construction"],
         help: "For short-term loans — are you requesting funds for work?",
+        when: isShortTerm, // hidden for long-term financing
       },
     ],
   },
