@@ -3,7 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { PipelineTable } from "./pipeline-table";
 import { PipelineKanban } from "./pipeline-kanban";
+import { PipelineSummary } from "./pipeline-summary";
 import { LOAN_STATUSES } from "@/lib/status";
+import { STAGE_BUCKETS } from "@/lib/stages";
 import type { Loan } from "@/lib/types";
 
 const VIEW_KEY = "sphinx.pipeline.view";
@@ -29,6 +31,8 @@ export function PipelineView({
 }) {
   const [view, setView] = useState<"table" | "board">("table");
   const [statusFilter, setStatusFilter] = useState("pipeline");
+  // Transient drill-down from the summary tiles (not persisted — it's a quick filter).
+  const [bucketFilter, setBucketFilter] = useState<string | null>(null);
 
   useEffect(() => {
     try {
@@ -60,18 +64,32 @@ export function PipelineView({
     }
   }
 
+  function toggleBucket(key: string) {
+    setBucketFilter((cur) => (cur === key ? null : key));
+  }
+
   // Default ("pipeline") hides loans that aren't moving forward; "all" shows everything;
-  // any specific status narrows to just that one.
-  const visible = useMemo(() => {
+  // any specific status narrows to just that one. The summary tiles count this status-filtered
+  // set, so picking a bucket never zeroes out the other tiles.
+  const statusVisible = useMemo(() => {
     if (statusFilter === "all") return loans;
     if (statusFilter === "pipeline") return loans.filter((l) => !HIDDEN_STATUSES.has(l.status));
     return loans.filter((l) => l.status === statusFilter);
   }, [loans, statusFilter]);
 
+  const activeBucket = bucketFilter ? STAGE_BUCKETS.find((b) => b.key === bucketFilter) : undefined;
+  const visible = useMemo(() => {
+    if (!activeBucket) return statusVisible;
+    const stages = activeBucket.stages as readonly string[];
+    return statusVisible.filter((l) => stages.includes(l.stage));
+  }, [statusVisible, activeBucket]);
+
   return (
     <div className="flex flex-col gap-4">
+      <PipelineSummary loans={statusVisible} activeBucket={bucketFilter} onPick={toggleBucket} />
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="inline-flex self-start rounded-md border border-line p-0.5 text-sm">
+        <div className="flex items-center gap-3">
+          <div className="inline-flex self-start rounded-md border border-line p-0.5 text-sm">
           {(["table", "board"] as const).map((v) => (
             <button
               key={v}
@@ -83,6 +101,18 @@ export function PipelineView({
               {v === "board" ? "Board" : "Table"}
             </button>
           ))}
+          </div>
+          {activeBucket && (
+            <button
+              type="button"
+              onClick={() => setBucketFilter(null)}
+              className="inline-flex items-center gap-1 rounded-full border border-gold/60 bg-gold/10 px-2.5 py-1 text-xs font-medium text-navy transition-colors hover:bg-gold/20"
+              title="Clear the stage filter"
+            >
+              {activeBucket.label}
+              <span aria-hidden className="text-sm leading-none">×</span>
+            </button>
+          )}
         </div>
         <label className="flex items-center gap-2 text-sm text-muted">
           <span className="font-medium">Status</span>
