@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
-import { deleteDriveFile } from "@/lib/google/drive";
+import { deleteDriveFile, renameDriveFile } from "@/lib/google/drive";
 import { logEvent } from "@/lib/audit";
 
 export const runtime = "nodejs";
@@ -32,6 +32,46 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   if (error || !signed) return new Response("Could not generate link", { status: 500 });
 
   return Response.redirect(signed.signedUrl, 302);
+}
+
+/** Rename a document's display name (lending team, enforced by RLS); renames the Drive copy too. */
+export async function PATCH(req: Request, { params }: { params: Promise<{ id: string; docId: string }> }) {
+  const { id: loanId, docId } = await params;
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return new Response("Unauthorized", { status: 401 });
+
+  let body: { fileName?: unknown };
+  try {
+    body = (await req.json()) as { fileName?: unknown };
+  } catch {
+    return new Response("Bad JSON", { status: 400 });
+  }
+  const fileName = String(body.fileName ?? "").trim();
+  if (!fileName) return new Response("A file name is required", { status: 400 });
+
+  // RLS allows the write only for the lending team with loan access.
+  const { data: updated, error } = await supabase
+    .from("loan_documents")
+    .update({ file_name: fileName })
+    .eq("id", docId)
+    .eq("loan_id", loanId)
+    .select("id,drive_file_id,file_name")
+    .single();
+  if (error || !updated) return new Response(error?.message ?? "Not found", { status: 403 });
+
+  if (updated.drive_file_id) {
+    try {
+      await renameDriveFile(updated.drive_file_id, fileName);
+    } catch {
+      /* best-effort — the display name is updated regardless */
+    }
+  }
+
+  return Response.json({ ok: true, fileName });
 }
 
 /** Delete a document (lending team, enforced by RLS): removes the row, blob, and Drive copy. */

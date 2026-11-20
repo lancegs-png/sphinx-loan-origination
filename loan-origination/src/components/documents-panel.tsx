@@ -15,13 +15,13 @@ const STATUS_LABEL: Record<string, string> = {
   approved: "Approved",
   not_applicable: "N/A",
 };
-// Solid dot color per status (themed where a token exists).
+// Solid dot color per status.
 const STATUS_COLOR: Record<string, string> = {
-  outstanding: "var(--status-outstanding)",
-  ordered: "#2563eb",
-  update_needed: "var(--status-update)",
-  approved: "var(--status-approved)",
-  not_applicable: "var(--faint)",
+  outstanding: "#ef4444", // red
+  ordered: "#06b6d4", // cyan
+  update_needed: "#eab308", // yellow
+  approved: "#22c55e", // green
+  not_applicable: "#ffffff", // white
 };
 // Rank for a group's roll-up dot: the most-blocking status present wins.
 const STATUS_RANK: Record<string, number> = {
@@ -45,7 +45,13 @@ function Dot({ status, size = 11 }: { status: string; size?: number }) {
     <span
       aria-hidden
       className="inline-block shrink-0 rounded-full"
-      style={{ width: size, height: size, background: STATUS_COLOR[status] ?? "var(--faint)" }}
+      style={{
+        width: size,
+        height: size,
+        background: STATUS_COLOR[status] ?? "#ffffff",
+        // A thin inset ring gives every dot a crisp edge and keeps the white "N/A" dot visible.
+        boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.22)",
+      }}
     />
   );
 }
@@ -141,6 +147,8 @@ export function DocumentsPanel({
   const [uploading, setUploading] = useState<string | null>(null);
   const [dragItem, setDragItem] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [expanded, setExpanded] = useState<Set<string>>(new Set()); // documents whose files are shown
+  const [editingFile, setEditingFile] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
 
   const docsByItem = useMemo(() => {
@@ -250,11 +258,37 @@ export function DocumentsPanel({
     setDocs((prev) => prev.filter((d) => d.id !== docId));
   }
 
+  async function renameDoc(docId: string, name: string) {
+    const next = name.trim();
+    const current = docs.find((d) => d.id === docId)?.file_name;
+    setEditingFile(null);
+    if (!next || next === current) return;
+    setDocs((prev) => prev.map((d) => (d.id === docId ? { ...d, file_name: next } : d)));
+    const res = await fetch(`/api/loans/${loanId}/documents/${docId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fileName: next }),
+    });
+    if (!res.ok) {
+      setMsg("Could not rename file.");
+      if (current) setDocs((prev) => prev.map((d) => (d.id === docId ? { ...d, file_name: current } : d)));
+    }
+  }
+
   function toggleGroup(key: string) {
     setCollapsed((prev) => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key);
       else next.add(key);
+      return next;
+    });
+  }
+
+  function toggleDoc(id: string) {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   }
@@ -328,6 +362,7 @@ export function DocumentsPanel({
                 {!isCollapsed &&
                   g.rows.map((r) => {
                     const files = docsByItem.get(r.id) ?? [];
+                    const isDocExpanded = expanded.has(r.id);
                     return (
                       <div
                         key={r.id}
@@ -354,12 +389,36 @@ export function DocumentsPanel({
                         }`}
                       >
                         <div className={`${GRID} min-h-[2.5rem]`}>
-                          {/* Item: status dot (click to change) + name + upload */}
-                          <div className="flex items-center gap-2 pl-7 pr-3 py-1.5 font-medium text-fg">
+                          {/* Item: chevron (if files) + status dot (click to change) + name + count + upload */}
+                          <div className="flex items-center gap-1.5 pl-3 pr-3 py-1.5 font-medium text-fg">
+                            {files.length > 0 ? (
+                              <button
+                                type="button"
+                                onClick={() => toggleDoc(r.id)}
+                                aria-expanded={isDocExpanded}
+                                aria-label={isDocExpanded ? "Hide files" : "Show files"}
+                                className="shrink-0 rounded p-0.5 text-muted transition-colors hover:bg-surface-2 hover:text-fg"
+                              >
+                                <svg
+                                  width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                  strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden
+                                  className={`transition-transform ${isDocExpanded ? "" : "-rotate-90"}`}
+                                >
+                                  <path d="M6 9l6 6 6-6" />
+                                </svg>
+                              </button>
+                            ) : (
+                              <span className="w-[22px] shrink-0" aria-hidden />
+                            )}
                             <StatusControl status={r.status} canEdit={canEdit} onChange={(s) => setStatus(r.id, s)} />
                             <span className="min-w-0 break-words" title={r.name}>
                               {r.name}
                             </span>
+                            {files.length > 0 && (
+                              <span className="shrink-0 rounded-full border border-line px-1.5 text-[11px] tabular-nums text-muted">
+                                {files.length}
+                              </span>
+                            )}
                             {canEdit && (
                               <label
                                 title="Upload files, or drag a file onto this row"
@@ -409,38 +468,70 @@ export function DocumentsPanel({
                           </div>
                         </div>
 
-                        {/* Nested uploaded files — indented child rows */}
-                        {files.map((d) => (
-                          <div key={d.id} className="flex items-center gap-2 border-t border-dashed border-line/70 bg-surface-2/20 pl-12 pr-3 py-1.5">
-                            <svg
-                              width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                              strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden
-                              className="shrink-0 text-faint"
-                            >
-                              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                              <path d="M14 2v6h6" />
-                            </svg>
-                            <a
-                              href={`/api/loans/${loanId}/documents/${d.id}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="min-w-0 truncate text-xs text-navy hover:underline"
-                              title={d.file_name}
-                            >
-                              {d.file_name}
-                            </a>
-                            {canEdit && (
-                              <button
-                                type="button"
-                                onClick={() => removeDoc(d.id)}
-                                aria-label={`Remove ${d.file_name}`}
-                                className="ml-auto shrink-0 leading-none text-faint hover:text-[color:var(--status-outstanding)]"
+                        {/* Nested uploaded files — collapsed by default; stacked when expanded */}
+                        {isDocExpanded &&
+                          files.map((d) => (
+                            <div key={d.id} className="flex items-center gap-2 border-t border-dashed border-line/70 bg-surface-2/20 pl-12 pr-3 py-1.5">
+                              <svg
+                                width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden
+                                className="shrink-0 text-faint"
                               >
-                                ×
-                              </button>
-                            )}
-                          </div>
-                        ))}
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                                <path d="M14 2v6h6" />
+                              </svg>
+                              {editingFile === d.id ? (
+                                <input
+                                  autoFocus
+                                  defaultValue={d.file_name}
+                                  onBlur={(e) => renameDoc(d.id, e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                                    else if (e.key === "Escape") setEditingFile(null);
+                                  }}
+                                  className="min-w-0 flex-1 rounded border border-line bg-surface px-1.5 py-0.5 text-xs text-fg outline-none focus:border-gold"
+                                />
+                              ) : (
+                                <a
+                                  href={`/api/loans/${loanId}/documents/${d.id}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="min-w-0 truncate text-xs text-navy hover:underline"
+                                  title={d.file_name}
+                                >
+                                  {d.file_name}
+                                </a>
+                              )}
+                              {canEdit && editingFile !== d.id && (
+                                <div className="ml-auto flex shrink-0 items-center gap-0.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditingFile(d.id)}
+                                    aria-label={`Rename ${d.file_name}`}
+                                    title="Rename"
+                                    className="rounded p-1 text-faint transition-colors hover:bg-surface-2 hover:text-fg"
+                                  >
+                                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                                      <path d="M12 20h9" />
+                                      <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+                                    </svg>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => removeDoc(d.id)}
+                                    aria-label={`Delete ${d.file_name}`}
+                                    title="Delete"
+                                    className="rounded p-1 text-faint transition-colors hover:bg-surface-2 hover:text-[color:var(--status-outstanding)]"
+                                  >
+                                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                                      <polyline points="3 6 5 6 21 6" />
+                                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                                    </svg>
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          ))}
                       </div>
                     );
                   })}
