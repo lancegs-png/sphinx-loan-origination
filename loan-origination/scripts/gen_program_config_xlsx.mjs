@@ -107,7 +107,7 @@ const DOCS = [
   ["Background Check (Personal/Business)", L, lender, "", true],
 ];
 const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
-const DOC_HEAD = ["Key", "Name", "Category", "Assignee", "Guidance", "Required", ...PROG_HEADERS];
+const DOC_HEAD = ["Key", "Name", "Type", "Assignee", "Guidance", "Required", ...PROG_HEADERS];
 const docRows = DOCS.map(([name, category, assignee, guidance, required]) => [
   slug(name),
   name,

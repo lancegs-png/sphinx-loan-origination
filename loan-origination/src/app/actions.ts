@@ -1216,6 +1216,7 @@ export type ChecklistItemInput = {
   documentTypeId: string;
   required: boolean;
   assignee: "borrower" | "lending_team";
+  category: string; // the document "Type" used to group the checklist (free text)
   namingOverride: string;
   reviewRulesOverride: string;
 };
@@ -1237,6 +1238,7 @@ export async function saveProgramChecklist(
       document_type_id: it.documentTypeId,
       required: it.required,
       assignee: it.assignee,
+      category: it.category.trim() || null,
       naming_override: it.namingOverride.trim() || null,
       review_rules_override: it.reviewRulesOverride.trim() || null,
       sort: i,

@@ -157,7 +157,8 @@ export async function parseProgramConfig(buffer: Buffer): Promise<ParsedConfig> 
       documents.push({
         key,
         name: name || key,
-        category: val(dt, r, header, "Category") || null,
+        // "Type" is the grouping column; accept the legacy "Category" header too.
+        category: val(dt, r, header, "Type") || val(dt, r, header, "Category") || null,
         assignee: assignee === "lending_team" || assignee === "lender" ? "lending_team" : "borrower",
         guidance: val(dt, r, header, "Guidance") || null,
         required: isChecked(val(dt, r, header, "Required")),
