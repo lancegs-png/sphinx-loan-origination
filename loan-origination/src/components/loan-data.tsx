@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { saveLoanField, setLoanFieldLock, syncLoanToSheet, pullFromSheet } from "@/app/actions";
 import type { FieldDef, FieldValues, Loan } from "@/lib/types";
+import { INTAKE_FORM_SPEC, type IntakeFieldType } from "@/lib/intake/form-spec";
 
 // Section cards, labelled and ordered to mirror the DSCR dashboard's Loan Data tab.
 // Data Tape Fields holds the columns the tape adds on top of Loan Data; Additional Info
@@ -138,6 +139,20 @@ function fmtMMDDYYYY(iso: string): string {
   return m ? `${m[2]}/${m[3]}/${m[1]}` : iso;
 }
 
+/** Read-only display of an Intake Form Data snapshot value, by its form-spec type. */
+function fmtSnap(type: IntakeFieldType, raw: unknown): string {
+  const v = str(raw).trim();
+  if (!v) return "—";
+  if (type === "currency") {
+    const n = Number(v.replace(/[^0-9.-]/g, ""));
+    if (!Number.isFinite(n)) return v;
+    const minimumFractionDigits = Number.isInteger(n) ? 0 : 2;
+    return `$${n.toLocaleString("en-US", { minimumFractionDigits, maximumFractionDigits: 2 })}`;
+  }
+  if (type === "date") return fmtMMDDYYYY(v);
+  return v;
+}
+
 export function LoanData({
   loan,
   fieldDefs,
@@ -195,7 +210,7 @@ export function LoanData({
   // Collapsible section cards. All open by default except these three; the choice is
   // remembered per browser.
   const [collapsed, setCollapsed] = useState<Set<string>>(
-    () => new Set(["additional", "data_tape", "initial_property"]),
+    () => new Set(["additional", "data_tape", "intake_form"]),
   );
   useEffect(() => {
     try {
@@ -342,25 +357,54 @@ export function LoanData({
     );
   }
 
-  // Initial Property Data: the original (intake) values for property fields, read-only.
-  // The live Property card shows the current value (verified once set, else initial).
+  // Intake Form Data: a fixed, read-only snapshot of exactly what was submitted on the
+  // intake form (loans.custom_fields.intake_snapshot), shown for reference. It never changes
+  // as the editable working copies of those fields are updated elsewhere. Lender-only, like
+  // the legacy card it replaces. Falls back to the original property intake values for loans
+  // created before snapshots existed. See docs/intake-crm-design.md §7.1.
+  const snapshot = (loan.custom_fields ?? null) as { intake_snapshot?: { submitted_at?: string; values?: Record<string, unknown> } } | null;
+  const snapValues = snapshot?.intake_snapshot?.values ?? null;
+  const intakeRows = snapValues
+    ? INTAKE_FORM_SPEC.flatMap((s) => s.fields).filter((f) => str(snapValues[f.key]).trim() !== "")
+    : [];
+
+  // Legacy fallback (no snapshot): the original intake values for property fields.
   const propInitials = defs
     .filter((d) => d.section === "property" && d.verifiable)
     .sort((a, b) => a.sort - b.sort);
-  const initialCard =
-    isLender && propInitials.length
-      ? cardShell(
-          "initial_property",
-          "Initial Property Data",
-          propInitials.map((d) => (
-            <Row key={d.key} label={DASHBOARD_LABEL[d.key] ?? d.label}>
-              <span className="block truncate px-2 py-1.5 text-sm text-muted">
-                {fmtDisplay(d, str(values[d.key]?.initial))}
-              </span>
-            </Row>
-          )),
-        )
-      : null;
+
+  let intakeCard: ReactNode = null;
+  if (isLender && intakeRows.length) {
+    const submitted = snapshot?.intake_snapshot?.submitted_at;
+    intakeCard = cardShell(
+      "intake_form",
+      "Intake Form Data",
+      <>
+        {submitted && (
+          <Row label="Submitted">
+            <span className="block truncate px-2 py-1.5 text-sm text-muted">{fmtMMDDYYYY(submitted)}</span>
+          </Row>
+        )}
+        {intakeRows.map((f) => (
+          <Row key={f.key} label={f.label}>
+            <span className="block truncate px-2 py-1.5 text-sm text-muted">{fmtSnap(f.type, snapValues![f.key])}</span>
+          </Row>
+        ))}
+      </>,
+    );
+  } else if (isLender && propInitials.length) {
+    intakeCard = cardShell(
+      "intake_form",
+      "Intake Form Data",
+      propInitials.map((d) => (
+        <Row key={d.key} label={DASHBOARD_LABEL[d.key] ?? d.label}>
+          <span className="block truncate px-2 py-1.5 text-sm text-muted">
+            {fmtDisplay(d, str(values[d.key]?.initial))}
+          </span>
+        </Row>
+      )),
+    );
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -380,7 +424,7 @@ export function LoanData({
           {sectionCard("contact")}
           {sectionCard("closing")}
           {sectionCard("data_tape")}
-          {initialCard}
+          {intakeCard}
         </div>
       </div>
       {canEdit && (

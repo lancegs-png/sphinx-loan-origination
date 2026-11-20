@@ -82,6 +82,68 @@ export async function openLoan(input: {
 }
 
 /**
+ * Create a deal from a native intake-form submission (manual entry, Phase 1). Opens an
+ * Opportunity (OPP#, Intake stage) via the shared `openDeal`, which derives the program,
+ * stores the immutable Intake Form Data snapshot, and seeds the submitted field values.
+ * `values` are the form's dictionary-keyed answers. See docs/intake-crm-design.md.
+ */
+export async function createIntakeDeal(
+  values: Record<string, string>,
+): Promise<{ ok: boolean; id?: string; error?: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Not signed in" };
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("lender_user_type")
+    .eq("id", user.id)
+    .single();
+  if (!profile?.lender_user_type) return { ok: false, error: "Lending team only" };
+
+  // Keep only the non-empty answers.
+  const clean: Record<string, string> = {};
+  for (const [k, v] of Object.entries(values)) {
+    const t = typeof v === "string" ? v.trim() : "";
+    if (t) clean[k] = t;
+  }
+
+  const street = clean.property_street ?? "";
+  const first = clean.guarantor_first_name ?? "";
+  const last = clean.guarantor_last_name ?? "";
+  if (!street) return { ok: false, error: "Enter the property street address" };
+  if (!first && !last && !clean.borrower_entity) {
+    return { ok: false, error: "Enter the borrower name or entity" };
+  }
+
+  const address = [
+    street,
+    [clean.property_city, [clean.property_state, clean.property_zip].filter(Boolean).join(" ")]
+      .filter(Boolean)
+      .join(", "),
+  ]
+    .filter(Boolean)
+    .join(", ");
+
+  try {
+    const result = await openDeal(createServiceRoleClient(), {
+      address,
+      guarantorFirst: first,
+      guarantorLast: last,
+      stage: "intake",
+      createdByUserId: user.id,
+      accountManagerId: profile.lender_user_type === "account_manager" ? user.id : null,
+      intake: clean,
+    });
+    return { ok: true, id: result.id };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Could not create the deal" };
+  }
+}
+
+/**
  * One turn of the conversational intake (design §6). The chat posts the user's
  * message, then calls this; the AI extracts fields, updates the loan record, and
  * replies with the next question. Field writes go through the service role after
