@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { submitPublicIntake } from "@/app/actions";
 import { INTAKE_FORM_SPEC, type IntakeFieldSpec } from "@/lib/intake/form-spec";
+import { SphinxLogo } from "@/components/brand";
 
 /**
  * Public intake form served at /apply/<token> (no login). Same fields and conditional logic
@@ -61,7 +62,7 @@ export function PublicIntakeForm({ token, branding }: { token: string; branding:
       <div className="mx-auto w-full max-w-3xl">
         <header className="mb-6">
           {sphinx ? (
-            <div className="text-lg font-bold tracking-tight text-navy">Sphinx Capital</div>
+            <SphinxLogo height={56} />
           ) : (
             <div className="text-lg font-bold tracking-tight text-fg">Loan Application</div>
           )}
