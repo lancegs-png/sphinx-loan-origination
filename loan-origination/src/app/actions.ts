@@ -1324,7 +1324,7 @@ export async function deleteDocumentType(id: string): Promise<{ ok: boolean; err
   return { ok: true };
 }
 
-export type UserType = "borrower" | "originator" | "account_manager" | "operations" | "admin";
+export type UserType = "borrower" | "originator" | "broker" | "account_manager" | "operations" | "admin";
 
 function rolesFromType(t: UserType) {
   const isLender = t === "admin" || t === "operations" || t === "account_manager";
@@ -1447,6 +1447,188 @@ export async function resetUserPassword(input: {
   const res = await resetTempPassword(createServiceRoleClient(), { userId: input.userId });
   if (!res.ok) return { ok: false, error: res.error };
   return { ok: true, tempPassword: res.tempPassword };
+}
+
+/** Confirm the caller is a broker; returns their user id, name and email, or an error. */
+async function requireBroker(): Promise<
+  { userId: string; fullName: string | null; email: string } | { error: string }
+> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Not signed in" };
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("external_type, full_name, email")
+    .eq("id", user.id)
+    .single();
+  if (profile?.external_type !== "broker") return { error: "Brokers only" };
+  return {
+    userId: user.id,
+    fullName: (profile.full_name as string | null) ?? null,
+    email: (profile.email as string) ?? user.email ?? "",
+  };
+}
+
+/** This deployment's origin, from request headers (no site-url env is configured). */
+async function requestOrigin(): Promise<string | null> {
+  const h = await headers();
+  const proto = h.get("x-forwarded-proto") ?? "https";
+  const host = h.get("x-forwarded-host") ?? h.get("host");
+  return host ? `${proto}://${host}` : null;
+}
+
+/**
+ * Link a broker account to every existing loan that names their email as the broker
+ * (loan_field_values.broker_email), by adding a 'broker' deal_participants row (idempotent).
+ * Service role. Returns how many loans were newly linkable.
+ */
+async function linkBrokerToLoans(userId: string, email: string): Promise<number> {
+  const target = email.trim().toLowerCase();
+  if (!target) return 0;
+  const admin = createServiceRoleClient();
+  const { data: rows } = await admin
+    .from("loan_field_values")
+    .select("loan_id, initial_value, verified_value")
+    .eq("field_key", "broker_email");
+  const loanIds = Array.from(
+    new Set(
+      (rows ?? [])
+        .filter((r) => {
+          const v = (r.verified_value ?? r.initial_value) as unknown;
+          return typeof v === "string" && v.trim().toLowerCase() === target;
+        })
+        .map((r) => r.loan_id as string),
+    ),
+  );
+  if (!loanIds.length) return 0;
+  const { error } = await admin.from("deal_participants").upsert(
+    loanIds.map((loan_id) => ({ loan_id, user_id: userId, participant_role: "broker", added_by: userId })),
+    { onConflict: "loan_id,user_id", ignoreDuplicates: true },
+  );
+  return error ? 0 : loanIds.length;
+}
+
+/**
+ * Admin: invite a broker to the portal. Sends Supabase's invite email (a set-password link),
+ * creates the account as external_type='broker', and links them to existing loans that name
+ * their email. If invite email isn't configured, falls back to a one-time temp password for
+ * the admin to hand over (the broker can also use the login page's magic link). Admin only.
+ */
+export async function inviteBroker(input: {
+  fullName: string;
+  email: string;
+}): Promise<{ ok: boolean; error?: string; invited?: boolean; tempPassword?: string; linked?: number }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+  const { data: me } = await supabase
+    .from("profiles")
+    .select("lender_user_type")
+    .eq("id", user.id)
+    .single();
+  if (me?.lender_user_type !== "admin") return { ok: false, error: "Admins only." };
+
+  const email = input.email.trim().toLowerCase();
+  const fullName = input.fullName.trim();
+  if (!email) return { ok: false, error: "Email required." };
+
+  const admin = createServiceRoleClient();
+  const origin = await requestOrigin();
+  const redirectTo = origin ? `${origin}/auth/callback?next=/update-password` : undefined;
+
+  const markBroker = async (userId: string) => {
+    await admin
+      .from("profiles")
+      .update({ full_name: fullName || null, external_type: "broker", is_lending_team: false, lender_user_type: null })
+      .eq("id", userId);
+    return linkBrokerToLoans(userId, email);
+  };
+
+  // Preferred: send the invite email (also creates the auth account).
+  const { data: invited, error: inviteErr } = await admin.auth.admin.inviteUserByEmail(email, {
+    data: { full_name: fullName || null },
+    redirectTo,
+  });
+  if (!inviteErr && invited?.user) {
+    const linked = await markBroker(invited.user.id);
+    return { ok: true, invited: true, linked };
+  }
+
+  // Fallback 1: the account already exists — (re)mark them a broker and link.
+  const { data: existing } = await admin.from("profiles").select("id").ilike("email", email).maybeSingle();
+  if (existing?.id) {
+    const linked = await markBroker(existing.id as string);
+    return { ok: true, invited: false, linked, error: "That account already existed — updated to broker and linked." };
+  }
+
+  // Fallback 2: invite email likely not configured — create with a temp password to hand over.
+  const tempPassword = generateTempPassword();
+  const { data: created, error: createErr } = await admin.auth.admin.createUser({
+    email,
+    password: tempPassword,
+    email_confirm: true,
+    user_metadata: { full_name: fullName || null },
+  });
+  if (createErr || !created?.user) {
+    return { ok: false, error: inviteErr?.message ?? createErr?.message ?? "Could not invite broker." };
+  }
+  const linked = await markBroker(created.user.id);
+  return { ok: true, invited: false, tempPassword, linked };
+}
+
+/**
+ * Broker self-submission of the intake form (broker portal). Opens an Opportunity attributed to
+ * the broker and adds them as a 'broker' participant so it appears in their pipeline. Brokers only.
+ */
+export async function submitBrokerIntake(
+  values: Record<string, string>,
+): Promise<{ ok: boolean; id?: string; error?: string }> {
+  const auth = await requireBroker();
+  if ("error" in auth) return { ok: false, error: auth.error };
+
+  const clean: Record<string, string> = {};
+  for (const [k, v] of Object.entries(values)) {
+    const t = typeof v === "string" ? v.trim() : "";
+    if (t) clean[k] = t;
+  }
+  const street = clean.property_street ?? "";
+  if (!street) return { ok: false, error: "Enter the property street address" };
+  if (!clean.guarantor_first_name && !clean.guarantor_last_name && !clean.borrower_entity) {
+    return { ok: false, error: "Enter the borrower name or entity" };
+  }
+
+  // Attribution: the submitting broker.
+  clean.source_channel = "broker";
+  if (auth.fullName) clean.broker_name = auth.fullName;
+  if (auth.email) clean.broker_email = auth.email;
+
+  const address = [
+    street,
+    [clean.property_city, [clean.property_state, clean.property_zip].filter(Boolean).join(" ")]
+      .filter(Boolean)
+      .join(", "),
+  ]
+    .filter(Boolean)
+    .join(", ");
+
+  try {
+    const result = await openDeal(createServiceRoleClient(), {
+      address,
+      guarantorFirst: clean.guarantor_first_name ?? "",
+      guarantorLast: clean.guarantor_last_name ?? "",
+      stage: "intake",
+      createdByUserId: auth.userId,
+      createdByRole: "broker",
+      intake: clean,
+    });
+    return { ok: true, id: result.id };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Could not submit the deal" };
+  }
 }
 
 export type ChecklistItemInput = {

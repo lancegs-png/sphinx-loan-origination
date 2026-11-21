@@ -22,12 +22,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   } = await supabase.auth.getUser();
   if (!user) return new Response("Unauthorized", { status: 401 });
 
+  // Lending team or a broker (brokers upload in the portal); loan access is enforced below.
   const { data: me } = await supabase
     .from("profiles")
-    .select("lender_user_type")
+    .select("lender_user_type, external_type")
     .eq("id", user.id)
     .single();
-  if (!me?.lender_user_type) return new Response("Forbidden", { status: 403 });
+  if (!me?.lender_user_type && me?.external_type !== "broker") return new Response("Forbidden", { status: 403 });
 
   // RLS returns the loan only if the caller has access.
   const { data: loan } = await supabase.from("loans").select("id").eq("id", loanId).single();

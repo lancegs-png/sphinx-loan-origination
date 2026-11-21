@@ -47,6 +47,7 @@ export default async function LoanPage({
   const { userId, profile } = session;
   if (!profile) redirect("/login");
   const isLender = profile.is_lending_team;
+  const isBroker = profile.external_type === "broker";
 
   const supabase = await createClient();
 
@@ -72,7 +73,7 @@ export default async function LoanPage({
         : Promise.resolve([] as InternalNote[]),
       supabase
         .from("field_definitions")
-        .select("key,label,section,type,options,lender_only,sort,verifiable,repeat_group,source,required_stage,calc_key,programs")
+        .select("key,label,section,type,options,lender_only,broker_visible,sort,verifiable,repeat_group,source,required_stage,calc_key,programs")
         .order("sort"),
       loadFieldValues(supabase, id), // RLS filters lender-only fields for borrowers
       loadLoanChecklist(supabase, id, typedLoan.program_id, isLender),
@@ -116,6 +117,7 @@ export default async function LoanPage({
       currentUserId={userId}
       currentRole={myRole}
       isLender={isLender}
+      isBroker={isBroker}
       intakeMode={
         // Chat intake retired (Phase 1): the native intake form (/intake) is the single intake
         // surface, so the per-loan chat is general Q&A only. See docs/intake-crm-design.md §3.1.

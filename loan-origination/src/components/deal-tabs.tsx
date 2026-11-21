@@ -16,6 +16,7 @@ const DocumentsPanel = dynamic(() => import("./documents-panel").then((m) => m.D
 const ChecklistPanel = dynamic(() => import("./checklist-panel").then((m) => m.ChecklistPanel), { loading: PanelLoading });
 const TemplatesPanel = dynamic(() => import("./templates-panel").then((m) => m.TemplatesPanel), { loading: PanelLoading });
 const PeoplePanel = dynamic(() => import("./people-panel").then((m) => m.PeoplePanel), { loading: PanelLoading });
+const BrokerDocuments = dynamic(() => import("./broker-documents").then((m) => m.BrokerDocuments), { loading: PanelLoading });
 const NotesPanel = dynamic(() => import("./notes-panel").then((m) => m.NotesPanel), { loading: PanelLoading });
 const ActivityPanel = dynamic(() => import("./activity-panel").then((m) => m.ActivityPanel), { loading: PanelLoading });
 import type { ActivityEvent } from "@/lib/activity";
@@ -68,6 +69,7 @@ export function DealTabs({
   currentUserId,
   currentRole,
   isLender,
+  isBroker,
   intakeMode,
   fieldDefs,
   fieldValues,
@@ -85,6 +87,8 @@ export function DealTabs({
   currentUserId: string;
   currentRole: string;
   isLender: boolean;
+  /** Broker portal view: only Loan Info + Documents, no Chat/People/Checklist. */
+  isBroker: boolean;
   intakeMode: boolean;
   fieldDefs: FieldDef[];
   fieldValues: FieldValues;
@@ -170,8 +174,13 @@ export function DealTabs({
         <div className="flex flex-col gap-0.5 px-2">
           {tabs
             .filter((t) =>
-              // Borrowers/brokers see the Checklist tab only when they have visible ("all") tasks.
-              t.key === "checklist" ? isLender || stageTasks.length > 0 : !t.lenderOnly || isLender,
+              // Broker portal: only Loan Info + Documents.
+              isBroker
+                ? t.key === "loan" || t.key === "documents"
+                : // Borrowers see the Checklist tab only when they have visible ("all") tasks.
+                  t.key === "checklist"
+                  ? isLender || stageTasks.length > 0
+                  : !t.lenderOnly || isLender,
             )
             .map((t) => {
               const active = tab === t.key;
@@ -194,10 +203,12 @@ export function DealTabs({
       </nav>
 
       <div className="relative flex min-h-0 flex-1 flex-col">
-        {/* Chat tab — kept mounted so its thread stays in sync with the popup */}
-        <div className={tab === "chat" ? "mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col" : "hidden"}>
-          <Chat {...chatProps} />
-        </div>
+        {/* Chat tab — kept mounted so its thread stays in sync with the popup (not for brokers) */}
+        {!isBroker && (
+          <div className={tab === "chat" ? "mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col" : "hidden"}>
+            <Chat {...chatProps} />
+          </div>
+        )}
 
         {/* Data panels — Loan Info gets extra width for its dense, spreadsheet-style grid */}
         {tab !== "chat" && (
@@ -214,20 +225,24 @@ export function DealTabs({
                   values={fieldValues}
                   canEdit={isLender}
                   isLender={isLender}
+                  isBroker={isBroker}
                 />
               )}
 
-              {tab === "documents" && (
-                <DocumentsPanel
-                  loanId={loan.id}
-                  items={checklist}
-                  documents={documents}
-                  canEdit={isLender}
-                  canGenerate={isLender && atProcessing}
-                />
-              )}
+              {tab === "documents" &&
+                (isBroker ? (
+                  <BrokerDocuments loanId={loan.id} documents={documents} />
+                ) : (
+                  <DocumentsPanel
+                    loanId={loan.id}
+                    items={checklist}
+                    documents={documents}
+                    canEdit={isLender}
+                    canGenerate={isLender && atProcessing}
+                  />
+                ))}
 
-              {tab === "checklist" && (isLender || stageTasks.length > 0) && (
+              {tab === "checklist" && !isBroker && (isLender || stageTasks.length > 0) && (
                 <ChecklistPanel
                   loanId={loan.id}
                   currentStage={loan.stage}
@@ -236,7 +251,7 @@ export function DealTabs({
                 />
               )}
 
-              {tab === "people" && (
+              {tab === "people" && !isBroker && (
                 <PeoplePanel
                   loanId={loan.id}
                   participants={participants}
@@ -276,8 +291,8 @@ export function DealTabs({
         )}
       </div>
 
-      {/* Floating chat — available from every tab except the full Chat tab */}
-      <FloatingChat dormant={tab === "chat"} {...chatProps} />
+      {/* Floating chat — available from every tab except the full Chat tab (not for brokers) */}
+      {!isBroker && <FloatingChat dormant={tab === "chat"} {...chatProps} />}
     </div>
   );
 }

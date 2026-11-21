@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { setUserType, addUser, resetUserPassword, setUserActive, type UserType } from "@/app/actions";
+import { setUserType, addUser, inviteBroker, resetUserPassword, setUserActive, type UserType } from "@/app/actions";
 
 export type UserRow = {
   id: string;
@@ -18,6 +18,7 @@ export type UserRow = {
 const TYPES: { value: UserType; label: string }[] = [
   { value: "borrower", label: "Borrower" },
   { value: "originator", label: "Originator" },
+  { value: "broker", label: "Broker" },
   { value: "account_manager", label: "Account Manager" },
   { value: "operations", label: "Operations" },
   { value: "admin", label: "Admin" },
@@ -26,6 +27,7 @@ const TYPES: { value: UserType; label: string }[] = [
 const LABEL: Record<UserType, string> = {
   borrower: "Borrower",
   originator: "Originator",
+  broker: "Broker",
   account_manager: "Account Manager",
   operations: "Operations",
   admin: "Admin",
@@ -64,11 +66,35 @@ export function UsersRolesEditor({
     setBusy(true);
     setMsg(null);
     setTempPassword(null);
+    const addr = email.trim().toLowerCase();
+
+    // Brokers are invited by email (set-password link) and auto-linked to loans naming their
+    // email; if email isn't configured, a temp password comes back to share manually.
+    if (newType === "broker") {
+      const res = await inviteBroker({ fullName: name, email });
+      setBusy(false);
+      if (!res.ok) {
+        setMsg(res.error ?? "Could not invite broker.");
+        return;
+      }
+      const linked = res.linked ? ` Linked to ${res.linked} existing loan${res.linked === 1 ? "" : "s"}.` : "";
+      if (res.invited) {
+        setMsg(`Invite emailed to ${addr}.${linked}`);
+      } else {
+        setTempPassword(res.tempPassword ?? null);
+        setMsg(`${res.error ?? `Broker ${addr} added`}${res.tempPassword ? " — share the temporary password below" : ""}.${linked}`);
+      }
+      setEmail("");
+      setName("");
+      router.refresh();
+      return;
+    }
+
     const res = await addUser({ email, fullName: name, userType: newType });
     setBusy(false);
     if (res.ok) {
       setTempPassword(res.tempPassword ?? null);
-      setMsg(`Created ${email.trim().toLowerCase()} as ${LABEL[newType]}.`);
+      setMsg(`Created ${addr} as ${LABEL[newType]}.`);
       setEmail("");
       setName("");
       router.refresh();

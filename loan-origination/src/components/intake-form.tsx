@@ -2,15 +2,18 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createIntakeDeal } from "@/app/actions";
+import { createIntakeDeal, submitBrokerIntake } from "@/app/actions";
 import { INTAKE_FORM_SPEC, type IntakeFieldSpec } from "@/lib/intake/form-spec";
 
 /**
  * The native intake form (manual entry, Phase 1). One universal form for every deal type;
  * product-specific sections reveal based on the universal answers. On submit it opens an
  * Opportunity with the frozen Intake Form Data snapshot. See docs/intake-crm-design.md.
+ *
+ * `broker` mode is the broker portal: submits via submitBrokerIntake, which attributes the deal
+ * to the signed-in broker and adds them as a participant so it shows in their pipeline.
  */
-export function IntakeForm() {
+export function IntakeForm({ broker = false }: { broker?: boolean } = {}) {
   const router = useRouter();
   const [values, setValues] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
@@ -39,7 +42,7 @@ export function IntakeForm() {
         if (v != null && v.trim() !== "") payload[f.key] = v;
       }
     }
-    const res = await createIntakeDeal(payload);
+    const res = broker ? await submitBrokerIntake(payload) : await createIntakeDeal(payload);
     if (res.ok && res.id) {
       router.push(`/loans/${res.id}`);
       return; // keep the form busy through navigation
@@ -51,10 +54,12 @@ export function IntakeForm() {
   return (
     <div className="mx-auto w-full max-w-3xl">
       <div className="mb-6">
-        <h1 className="text-xl font-bold text-fg">New intake</h1>
+        <h1 className="text-xl font-bold text-fg">{broker ? "Submit a loan" : "New intake"}</h1>
         <p className="mt-1 text-sm text-muted">
-          One form for every deal type — the right sections appear as you answer. Submitting opens an
-          Opportunity and keeps a fixed snapshot of what was entered.
+          One form for every deal type — the right sections appear as you answer.{" "}
+          {broker
+            ? "Submitting adds the loan to your pipeline so you can track it and upload documents."
+            : "Submitting opens an Opportunity and keeps a fixed snapshot of what was entered."}
         </p>
       </div>
 
@@ -77,7 +82,7 @@ export function IntakeForm() {
 
         <div className="flex items-center justify-end gap-2">
           <button type="submit" className="btn btn-primary" disabled={busy}>
-            {busy ? "Creating…" : "Create opportunity"}
+            {busy ? "Submitting…" : broker ? "Submit loan" : "Create opportunity"}
           </button>
         </div>
       </form>

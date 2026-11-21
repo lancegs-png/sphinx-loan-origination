@@ -7,6 +7,7 @@ export type Profile = {
   phone: string | null;
   is_lending_team: boolean;
   lender_user_type: LenderUserType | null;
+  external_type: string | null; // "borrower" | "originator" | "broker" | null (external users)
 };
 
 export type Loan = {
@@ -77,6 +78,7 @@ export type FieldDef = {
   type: "text" | "number" | "currency" | "percent" | "date" | "select";
   options: string[];
   lender_only: boolean;
+  broker_visible: boolean; // a lender-only field a broker may still read (broker-safe subset)
   sort: number;
   verifiable: boolean;
   repeat_group: string | null; // 'property' | 'guarantor' | null

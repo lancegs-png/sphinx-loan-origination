@@ -28,12 +28,15 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   } = await supabase.auth.getUser();
   if (!user) return new Response("Unauthorized", { status: 401 });
 
+  // Lending team or a broker (brokers upload in the portal); loan access is enforced by RLS
+  // on the loan select below, and the insert is constrained to 'shared' for brokers.
   const { data: me } = await supabase
     .from("profiles")
-    .select("lender_user_type")
+    .select("lender_user_type, external_type")
     .eq("id", user.id)
     .single();
-  if (!me?.lender_user_type) return new Response("Forbidden", { status: 403 });
+  const isBroker = me?.external_type === "broker";
+  if (!me?.lender_user_type && !isBroker) return new Response("Forbidden", { status: 403 });
 
   // RLS returns the loan only if the caller has access.
   const { data: loan } = await supabase
@@ -219,6 +222,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         drive_file_id: driveFileId,
         drive_web_link: driveLink,
         uploaded_by: user.id,
+        // Broker uploads are shared (visible to staff + the broker); staff uploads are internal.
+        visibility: isBroker ? "shared" : "internal",
       })
       .select("id,checklist_item_id,file_name,content_type,size_bytes,drive_web_link,created_at")
       .single();
