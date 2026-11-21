@@ -16,7 +16,6 @@ const DocumentsPanel = dynamic(() => import("./documents-panel").then((m) => m.D
 const ChecklistPanel = dynamic(() => import("./checklist-panel").then((m) => m.ChecklistPanel), { loading: PanelLoading });
 const TemplatesPanel = dynamic(() => import("./templates-panel").then((m) => m.TemplatesPanel), { loading: PanelLoading });
 const PeoplePanel = dynamic(() => import("./people-panel").then((m) => m.PeoplePanel), { loading: PanelLoading });
-const BrokerDocuments = dynamic(() => import("./broker-documents").then((m) => m.BrokerDocuments), { loading: PanelLoading });
 const NotesPanel = dynamic(() => import("./notes-panel").then((m) => m.NotesPanel), { loading: PanelLoading });
 const ActivityPanel = dynamic(() => import("./activity-panel").then((m) => m.ActivityPanel), { loading: PanelLoading });
 import type { ActivityEvent } from "@/lib/activity";
@@ -229,18 +228,16 @@ export function DealTabs({
                 />
               )}
 
-              {tab === "documents" &&
-                (isBroker ? (
-                  <BrokerDocuments loanId={loan.id} documents={documents} />
-                ) : (
-                  <DocumentsPanel
-                    loanId={loan.id}
-                    items={checklist}
-                    documents={documents}
-                    canEdit={isLender}
-                    canGenerate={isLender && atProcessing}
-                  />
-                ))}
+              {tab === "documents" && (
+                <DocumentsPanel
+                  loanId={loan.id}
+                  items={checklist}
+                  documents={documents}
+                  canEdit={isLender}
+                  canUpload={isLender || isBroker}
+                  canGenerate={isLender && atProcessing}
+                />
+              )}
 
               {tab === "checklist" && !isBroker && (isLender || stageTasks.length > 0) && (
                 <ChecklistPanel

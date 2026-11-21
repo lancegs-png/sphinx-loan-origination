@@ -228,7 +228,10 @@ export function LoanData({
 
   // Collapsible section cards, defaulting open by phase (see the constants above). The choice
   // is remembered per phase so an opportunity and a funded loan keep their own layouts.
-  const collapseKey = intakeAtTop ? "sphinx.loandata.collapsed.opp" : "sphinx.loandata.collapsed.ops";
+  // Brokers get their own collapse namespace so the Intake Form Data card opens by default for
+  // them in Opportunity/Quoted (OPEN_FOR_OPPORTUNITY) rather than inheriting staff's stored layout.
+  const collapseKey =
+    (intakeAtTop ? "sphinx.loandata.collapsed.opp" : "sphinx.loandata.collapsed.ops") + (isBroker ? ".broker" : "");
   const [collapsed, setCollapsed] = useState<Set<string>>(
     () => new Set(ALL_SECTION_KEYS.filter((k) => !(intakeAtTop ? OPEN_FOR_OPPORTUNITY : OPEN_FOR_ONBOARDING).includes(k))),
   );

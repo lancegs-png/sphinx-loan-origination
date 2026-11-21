@@ -133,14 +133,20 @@ export function DocumentsPanel({
   items,
   documents,
   canEdit,
+  canUpload,
   canGenerate,
 }: {
   loanId: string;
   items: ChecklistItem[];
   documents: LoanDocument[];
   canEdit: boolean;
+  /** Can add/remove files. Defaults to canEdit; brokers get upload without status/note editing. */
+  canUpload?: boolean;
   canGenerate: boolean;
 }) {
+  // Uploading files is separable from editing statuses/notes: brokers upload but don't manage the
+  // checklist. Rename/delete of individual files stays gated on canEdit (lending team).
+  const canUploadFiles = canUpload ?? canEdit;
   const [rows, setRows] = useState<ChecklistItem[]>(items);
   const [docs, setDocs] = useState<LoanDocument[]>(documents);
   const [busy, setBusy] = useState(false);
@@ -371,16 +377,16 @@ export function DocumentsPanel({
                       <div
                         key={r.id}
                         onDragOver={
-                          canEdit
+                          canUploadFiles
                             ? (e) => {
                                 e.preventDefault();
                                 setDragItem(r.id);
                               }
                             : undefined
                         }
-                        onDragLeave={canEdit ? () => setDragItem((d) => (d === r.id ? null : d)) : undefined}
+                        onDragLeave={canUploadFiles ? () => setDragItem((d) => (d === r.id ? null : d)) : undefined}
                         onDrop={
-                          canEdit
+                          canUploadFiles
                             ? (e) => {
                                 e.preventDefault();
                                 setDragItem(null);
@@ -423,7 +429,7 @@ export function DocumentsPanel({
                                 {files.length}
                               </span>
                             )}
-                            {canEdit && (
+                            {canUploadFiles && (
                               <label
                                 title="Upload files, or drag a file onto this row"
                                 className="ml-auto inline-flex shrink-0 cursor-pointer items-center gap-1 rounded border border-line bg-surface px-1.5 py-0.5 text-[11px] font-medium text-muted hover:bg-surface-2 hover:text-fg"
