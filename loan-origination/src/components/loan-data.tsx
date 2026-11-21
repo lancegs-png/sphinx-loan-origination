@@ -20,6 +20,7 @@ const SECTION_LABEL: Record<string, string> = {
   closing: "Closing Calculations",
   data_tape: "Data Tape Fields",
   additional: "Additional Info",
+  admin: "Admin",
 };
 
 // Short display labels matching the dashboard's wording (overrides the stored field label).
@@ -122,7 +123,7 @@ const LOCKABLE_KEYS = new Set(["interest_rate", "ltv", "origination_fee_pct"]);
 // Opportunity / Quoted lead with the intake snapshot; Onboarding and later lead with the
 // structured Loan / Property / Borrower sections. Everything else starts collapsed.
 const ALL_SECTION_KEYS = [
-  "loan", "property", "borrower", "trade", "contact", "closing", "dscr_calc", "additional", "data_tape", "intake_form",
+  "loan", "property", "borrower", "trade", "contact", "closing", "dscr_calc", "additional", "data_tape", "admin", "intake_form",
 ];
 const OPEN_FOR_OPPORTUNITY = ["intake_form"];
 const OPEN_FOR_ONBOARDING = ["loan", "property", "borrower"];
@@ -288,7 +289,7 @@ export function LoanData({
   // from non-lenders (RLS already omits their values). Brokers get the broker sections plus
   // the broker-safe subset of otherwise-lender-only fields (e.g. select Closing Calculations),
   // matching the RLS broker tier in 0030_broker_portal.sql.
-  const INTERNAL_SECTIONS = new Set(["trade", "closing", "data_tape"]);
+  const INTERNAL_SECTIONS = new Set(["trade", "closing", "data_tape", "admin"]);
   const BROKER_SECTIONS = new Set(["loan", "property", "borrower", "contact", "closing", "intake_form"]);
   const defs = fieldDefs.filter((d) => {
     if (isLender) return true;
@@ -475,6 +476,7 @@ export function LoanData({
           {sectionCard("dscr_calc")}
           {sectionCard("additional")}
           {!intakeAtTop && intakeCard}
+          {sectionCard("admin")}
         </div>
         <div className="flex flex-col gap-6">
           {sectionCard("trade")}
@@ -775,7 +777,16 @@ function CellInput({
     );
   }
 
-  const inputType = def.type === "date" ? "date" : def.type === "number" ? "number" : "text";
+  const inputType =
+    def.type === "date"
+      ? "date"
+      : def.type === "number"
+        ? "number"
+        : def.type === "email"
+          ? "email"
+          : def.type === "phone"
+            ? "tel"
+            : "text";
   const prefix = def.type === "currency" ? "$" : null;
   const suffix = def.type === "percent" ? "%" : null;
 
@@ -809,6 +820,7 @@ function CellInput({
     return (
       <input
         type={inputType}
+        inputMode={def.type === "phone" ? "tel" : def.type === "email" ? "email" : undefined}
         value={value}
         disabled={disabled}
         placeholder={placeholder}

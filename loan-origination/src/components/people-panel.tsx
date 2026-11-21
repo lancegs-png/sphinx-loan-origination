@@ -82,6 +82,17 @@ export function PeoplePanel({
               { label: "Phone", key: "insurance_contact_phone" },
             ]}
           />
+          <FixedContact
+            loanId={loanId}
+            label="Broker"
+            canEdit={canEdit}
+            values={values}
+            lines={[
+              { label: "Name", key: "broker_name" },
+              { label: "Email", key: "broker_email" },
+              { label: "Phone", key: "broker_phone" },
+            ]}
+          />
         </div>
       </Group>
 
