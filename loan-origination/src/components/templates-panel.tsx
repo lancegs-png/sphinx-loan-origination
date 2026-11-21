@@ -48,7 +48,7 @@ export function TemplatesPanel({
                     rel="noopener noreferrer"
                     className="btn btn-secondary px-2.5 py-1 text-xs"
                   >
-                    {t.format === "xlsx" ? "CSV" : t.format === "docx" ? "Word" : "Download"}
+                    {t.format === "xlsx" ? "CSV" : t.format === "xml" ? "XML" : t.format === "docx" ? "Word" : "Download"}
                   </a>
                   {t.format === "docx" && (
                     <a
