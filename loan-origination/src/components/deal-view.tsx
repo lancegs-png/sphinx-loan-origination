@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { StageHeader } from "./stage-header";
 import { DealTabs } from "./deal-tabs";
+import { SendApplicationButton } from "./send-application-button";
 import type {
   ChecklistItem,
   FieldDef,
@@ -50,6 +51,12 @@ export function DealView({
   fieldLabels: Record<string, string>;
   atProcessing: boolean;
 }) {
+  // The borrower application unlocks once the term sheet is signed (signing records this; it does
+  // not advance the stage).
+  const termSheetSigned = Boolean(
+    (loan.custom_fields as { term_sheet?: { signed_at?: string } } | null)?.term_sheet?.signed_at,
+  );
+
   return (
     <div className="flex h-screen flex-col bg-surface">
       <header className="border-b border-line px-6 py-4">
@@ -63,9 +70,12 @@ export function DealView({
             </svg>
             Pipeline
           </Link>
-          <form action="/auth/signout" method="post">
-            <button className="btn btn-ghost text-sm">Sign out</button>
-          </form>
+          <div className="flex items-center gap-3">
+            {isLender && termSheetSigned && <SendApplicationButton loanId={loan.id} />}
+            <form action="/auth/signout" method="post">
+              <button className="btn btn-ghost text-sm">Sign out</button>
+            </form>
+          </div>
         </div>
         <div className="mt-3 flex flex-wrap items-center justify-center gap-x-3 gap-y-2">
           <h1 className="text-xl font-bold text-fg">

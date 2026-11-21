@@ -6,6 +6,7 @@ import {
   coerceForType,
   setFieldLockRow,
   upsertFieldValue,
+  writeIntakeFields,
 } from "@/lib/fields";
 import { recomputeLoan } from "@/lib/calc";
 import { sheetsConfigured, appendSheetRow, LOAN_TRACKER_SHEET_ID } from "@/lib/google/sheets";
@@ -19,6 +20,16 @@ import { loadLoanChecklist } from "@/lib/checklist";
 import { openDeal } from "@/lib/loans/open-deal";
 import { getActiveLink, isRateLimited, recordSubmission, newLinkToken } from "@/lib/intake/links";
 import { notifyBrokerOfSubmission } from "@/lib/intake/broker-notify";
+import {
+  getActiveApplicationLink,
+  ensureApplicationLink,
+  isApplicationRateLimited,
+  recordApplicationSubmission,
+  markApplicationLinkCompleted,
+} from "@/lib/application/links";
+import { APPLICATION_CONTROL_KEYS, coguarantorDictKey } from "@/lib/application/form-spec";
+import { loadFieldDefs } from "@/lib/field-defs";
+import { sendMail } from "@/lib/email";
 import { STAGES } from "@/lib/stages";
 import { isLoanStatus } from "@/lib/status";
 import type { QuoteField } from "@/lib/program-ai-config";
@@ -219,6 +230,165 @@ export async function submitPublicIntake(input: {
   } catch {
     return { ok: false, error: "Something went wrong submitting the form. Please try again." };
   }
+}
+
+/**
+ * Public borrower Loan Application submission (post-term-sheet). Called with no auth from
+ * /application/<token>. Validates the link, drops bots, rate-limits, then writes the overlapping
+ * answers back onto the EXISTING loan (service role) and saves the full submission as a snapshot.
+ * E-signature + the completed PDF + the Documents hand-off are added in phase 3.
+ */
+export async function submitApplication(input: {
+  token: string;
+  values: Record<string, string>;
+  website?: string;
+}): Promise<{ ok: boolean; error?: string }> {
+  const link = await getActiveApplicationLink(input.token);
+  if (!link) return { ok: false, error: "This link is no longer active." };
+  if ((input.website ?? "").trim() !== "") return { ok: true }; // honeypot
+  if (await isApplicationRateLimited(input.token)) {
+    return { ok: false, error: "We've received several submissions from this link recently. Please try again shortly." };
+  }
+
+  const clean: Record<string, string> = {};
+  for (const [k, v] of Object.entries(input.values ?? {})) {
+    const t = typeof v === "string" ? v.trim() : "";
+    if (t) clean[k] = t;
+  }
+
+  const admin = createServiceRoleClient();
+  try {
+    // Partition the answers: drop form-only controls; co-guarantor -> guarantor idx 2;
+    // declarations -> snapshot; everything else -> the dictionary at idx 1.
+    const primary: Record<string, string> = {};
+    const coguarantor: Record<string, string> = {};
+    const declarations: Record<string, string> = {};
+    for (const [k, v] of Object.entries(clean)) {
+      if (APPLICATION_CONTROL_KEYS.has(k)) continue;
+      if (k.startsWith("decl_")) {
+        declarations[k] = v;
+        continue;
+      }
+      const cogKey = coguarantorDictKey(k);
+      if (cogKey) {
+        coguarantor[cogKey] = v;
+        continue;
+      }
+      primary[k] = v;
+    }
+
+    const defRows = await loadFieldDefs();
+    const defs: Record<string, { type: string; source: string | null }> = {};
+    for (const d of defRows) defs[d.key] = { type: d.type, source: d.source };
+
+    // Primary answers at idx 1 (writeIntakeFields coerces by type + skips calculated/unknown keys).
+    await writeIntakeFields(admin, link.loan_id, primary, defs);
+
+    // Co-guarantor at idx 2.
+    for (const [key, raw] of Object.entries(coguarantor)) {
+      const def = defs[key];
+      if (!def || def.source === "calculated") continue;
+      const value = coerceForType(def.type, raw);
+      if (value === null) continue;
+      await upsertFieldValue(admin, { loanId: link.loan_id, key, idx: 2, valueKind: "initial", value });
+    }
+
+    // Save the full submission as a snapshot (merge, don't clobber other custom_fields).
+    const { data: loanRow } = await admin
+      .from("loans")
+      .select("custom_fields")
+      .eq("id", link.loan_id)
+      .maybeSingle();
+    const custom = (loanRow?.custom_fields ?? {}) as Record<string, unknown>;
+    custom.application_snapshot = {
+      submitted_at: new Date().toISOString(),
+      source: "application_form",
+      values: clean,
+      declarations,
+    };
+    await admin.from("loans").update({ custom_fields: custom }).eq("id", link.loan_id);
+
+    // Refresh derived fields from the new inputs (best-effort).
+    try {
+      await recomputeLoan(link.loan_id);
+    } catch {
+      /* non-fatal */
+    }
+
+    const h = await headers();
+    const ip = h.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
+    await recordApplicationSubmission(link.id, link.token, link.loan_id, ip);
+    await markApplicationLinkCompleted(link.id);
+    return { ok: true };
+  } catch {
+    return { ok: false, error: "Something went wrong submitting the application. Please try again." };
+  }
+}
+
+/**
+ * Lending-team action: generate (or reuse) the borrower's per-loan application link and email it to
+ * them. Allowed once the term sheet is signed.
+ */
+export async function sendBorrowerApplication(
+  loanId: string,
+): Promise<{ ok: boolean; url?: string; error?: string }> {
+  const auth = await requireLender();
+  if ("error" in auth) return { ok: false, error: auth.error };
+
+  const admin = createServiceRoleClient();
+  const { data: loan } = await admin.from("loans").select("custom_fields").eq("id", loanId).maybeSingle();
+  const signedAt = (loan?.custom_fields as { term_sheet?: { signed_at?: string } } | null)?.term_sheet?.signed_at;
+  if (!signedAt) return { ok: false, error: "Send the application after the term sheet is signed." };
+
+  // Borrower email from the loan's field values (prefer borrower_email, fall back to guarantor_email).
+  const { data: fv } = await admin
+    .from("loan_field_values")
+    .select("field_key,initial_value,verified_value")
+    .eq("loan_id", loanId)
+    .eq("idx", 1)
+    .in("field_key", ["borrower_email", "guarantor_email"]);
+  const emailOf = (key: string): string => {
+    const r = (fv ?? []).find((x) => x.field_key === key);
+    const v = r?.verified_value ?? r?.initial_value;
+    return v ? String(v) : "";
+  };
+  const borrowerEmail = emailOf("borrower_email") || emailOf("guarantor_email");
+  if (!borrowerEmail) return { ok: false, error: "No borrower email on file for this loan." };
+
+  const linkRow = await ensureApplicationLink(loanId, auth.userId);
+  const h = await headers();
+  const host = h.get("host");
+  const proto = h.get("x-forwarded-proto") ?? "https";
+  const url = host ? `${proto}://${host}/application/${linkRow.token}` : `/application/${linkRow.token}`;
+
+  const subject = "Complete your Sphinx Capital loan application";
+  const text = [
+    "Your term sheet is signed — the next step is your full loan application.",
+    "",
+    "We've pre-filled everything we already have; please review it and complete the rest:",
+    url,
+    "",
+    "This secure link is unique to your loan.",
+  ].join("\n");
+  const html = `<div style="max-width:560px;margin:0 auto;font:14px system-ui,sans-serif;color:#111">
+  <p>Your term sheet is signed — the next step is your full loan application.</p>
+  <p>We&apos;ve pre-filled everything we already have; please review it and complete the rest.</p>
+  <p><a href="${url}" style="display:inline-block;background:#1a56db;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none">Complete your application →</a></p>
+  <p style="color:#888;font-size:12px">This secure link is unique to your loan.</p>
+</div>`;
+
+  const res = await sendMail({ to: borrowerEmail, subject, html, text });
+  await logEvent(admin, {
+    loanId,
+    actorId: auth.userId,
+    eventType: "application_sent",
+    payload: { token: linkRow.token, emailed: res.ok },
+  });
+  if (!res.ok) {
+    const why = res.skipped ? "email isn't configured" : res.error ?? "the email failed";
+    return { ok: false, url, error: `Link created, but ${why}. Link: ${url}` };
+  }
+  return { ok: true, url };
 }
 
 /** Confirm the caller is lending team; returns their user id or an error. */
