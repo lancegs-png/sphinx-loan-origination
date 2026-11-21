@@ -119,6 +119,10 @@ export function PipelineKanban({
                         onKeyDown={(e) => {
                           if (e.key === "Enter") router.push(`/loans/${l.id}`);
                         }}
+                        // Prefetch the loan route on hover/focus so the click navigates instantly
+                        // (the kanban card is a draggable div, so it can't be a prefetching <Link>).
+                        onMouseEnter={() => router.prefetch(`/loans/${l.id}`)}
+                        onFocus={() => router.prefetch(`/loans/${l.id}`)}
                         className={`card cursor-pointer p-3 text-sm transition-shadow hover:shadow-md ${
                           dragId === l.id ? "opacity-50" : ""
                         }`}

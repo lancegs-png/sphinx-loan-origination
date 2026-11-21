@@ -14,9 +14,13 @@ export default async function Home() {
   if (!profile) redirect("/login");
 
   const supabase = await createClient();
+  // Only the columns the pipeline table / board / summary use — not select("*"), which would
+  // also pull custom_fields JSON and every other column for every loan.
   const { data } = await supabase
     .from("loans")
-    .select("*")
+    .select(
+      "id,loan_number,opportunity_number,property_address,borrower_name,loan_amount,loan_type,stage,status,closing_date",
+    )
     .order("created_at", { ascending: false });
   // Pass every loan to the client; the pipeline view hides the ones that aren't moving
   // forward (archived / withdrawn / declined) by default but lets the user filter them

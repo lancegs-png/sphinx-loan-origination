@@ -195,34 +195,60 @@ export function LoanData({
     return () => clearTimeout(t);
   }, [status]);
 
-  // Inbound sync: pull any sheet edits into the app on open and on a light timer while a
-  // lender is viewing. (app -> sheet is already instant; this is what lets sheet -> app work
-  // with no per-loan Apps Script trigger.) Best-effort; refresh only when something changed.
+  // Inbound sync: pull any sheet edits into the app while a lender is viewing. (app -> sheet is
+  // already instant and the Apps Script onEdit push is the primary path; this timer is a fallback.)
+  // To keep it cheap — each tick does a Sheets API read + several queries — it pauses on a
+  // backgrounded tab, starts at a slow interval, and backs off further while nothing changes.
   useEffect(() => {
     if (!canEdit || !isLender) return;
+    const BASE = 45_000;
+    const MAX = 180_000;
     let alive = true;
     let busy = false;
-    const pull = async () => {
-      if (busy) return;
+    let delay = BASE;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const schedule = () => {
+      if (alive) timer = setTimeout(tick, delay);
+    };
+    const tick = async () => {
+      // Don't poll a hidden tab; the visibility listener resumes it on focus.
+      if (document.visibilityState === "hidden" || busy) {
+        schedule();
+        return;
+      }
       busy = true;
       try {
         const res = await pullFromSheet(loan.id);
         if (alive && res.ok && (res.changed ?? 0) > 0) {
           const n = res.changed ?? 0;
           setStatus({ text: `Pulled ${n} update${n === 1 ? "" : "s"} from the sheet`, ok: true });
+          delay = BASE; // activity → poll at the base rate again
           router.refresh();
+        } else {
+          delay = Math.min(delay * 2, MAX); // quiet → back off
         }
       } catch {
         /* best-effort */
       } finally {
         busy = false;
+        schedule();
       }
     };
-    void pull();
-    const t = setInterval(pull, 25000);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") {
+        delay = BASE;
+        if (timer) clearTimeout(timer);
+        void tick();
+      }
+    };
+
+    void tick();
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
       alive = false;
-      clearInterval(t);
+      if (timer) clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, [canEdit, isLender, loan.id, router]);
 

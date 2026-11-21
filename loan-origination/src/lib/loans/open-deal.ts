@@ -192,9 +192,12 @@ export async function openDeal(
     ["guarantor_first_name", guarantorFirst],
     ["guarantor_last_name", guarantorLast],
   ];
-  for (const [key, value] of fields) {
-    if (value) await upsertFieldValue(admin, { loanId: loan.id, key, valueKind: "initial", value });
-  }
+  // Seed in parallel (independent rows) rather than 8 sequential round-trips.
+  await Promise.all(
+    fields
+      .filter(([, value]) => value)
+      .map(([key, value]) => upsertFieldValue(admin, { loanId: loan.id, key, valueKind: "initial", value })),
+  );
   // Seed the full intake submission as initial field values. Known dictionary keys only —
   // any new keys not yet imported into field_definitions are skipped here but preserved in
   // the snapshot, and seed on the next Program Config re-import.

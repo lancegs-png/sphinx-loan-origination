@@ -18,7 +18,6 @@ export function FloatingChat({
   currentUserId,
   currentRole,
   isLender,
-  intakeMode,
 }: {
   dormant: boolean;
   loanId: string;
@@ -26,7 +25,6 @@ export function FloatingChat({
   currentUserId: string;
   currentRole: string;
   isLender: boolean;
-  intakeMode: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const show = open && !dormant;
@@ -71,7 +69,6 @@ export function FloatingChat({
           currentUserId={currentUserId}
           currentRole={currentRole}
           isLender={isLender}
-          intakeMode={intakeMode}
         />
       </div>
     </>

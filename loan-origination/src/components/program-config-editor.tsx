@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { saveProgramAiConfig } from "@/app/actions";
-import type { QuoteField } from "@/lib/ai/intake";
+import type { QuoteField } from "@/lib/program-ai-config";
 
 function slug(s: string): string {
   return s

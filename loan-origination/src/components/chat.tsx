@@ -3,8 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { askAi, intakeTurn, generateTermSheet, signTermSheet, applyLoanUpdates } from "@/app/actions";
-import { IntakeFormCard } from "@/components/intake-form-card";
+import { askAi, generateTermSheet, signTermSheet, applyLoanUpdates } from "@/app/actions";
 import type { Message, ProposedUpdatesPayload } from "@/lib/types";
 
 function roleLabel(m: Message): string {
@@ -28,14 +27,12 @@ export function Chat({
   currentUserId,
   currentRole,
   isLender,
-  intakeMode,
 }: {
   loanId: string;
   initialMessages: Message[];
   currentUserId: string;
   currentRole: string;
   isLender: boolean;
-  intakeMode: boolean;
 }) {
   const supabase = useMemo(() => createClient(), []);
   const router = useRouter();
@@ -122,38 +119,10 @@ export function Chat({
     const text = body.trim();
     if (!text) return;
     setBusy(true);
-    const ok = await insertHuman(text, intakeMode ? false : internal);
+    const ok = await insertHuman(text, internal);
     setBusy(false);
     if (!ok) return;
     setBody("");
-
-    // While the loan is in Intake, each message drives the AI intake conversation.
-    if (intakeMode) {
-      setAiError(null);
-      setAiBusy(true);
-      const res = await intakeTurn(loanId, text);
-      setAiBusy(false);
-      if (!res.ok) setAiError(res.error ?? "Intake couldn’t continue.");
-      await refreshMessages();
-    }
-  }
-
-  async function submitForm(fields: { key: string; label: string }[], values: Record<string, string>) {
-    const text = fields
-      .filter((f) => values[f.key] != null && values[f.key] !== "")
-      .map((f) => `${f.label}: ${values[f.key]}`)
-      .join("; ");
-    if (!text) return;
-    setBusy(true);
-    const ok = await insertHuman(text, false);
-    setBusy(false);
-    if (!ok) return;
-    setAiError(null);
-    setAiBusy(true);
-    const res = await intakeTurn(loanId, text);
-    setAiBusy(false);
-    if (!res.ok) setAiError(res.error ?? "Intake couldn’t continue.");
-    await refreshMessages();
   }
 
   // Borrower accepts (or declines) the quoted terms. On Yes, the AI generates a term sheet.
@@ -253,13 +222,6 @@ export function Chat({
                   </span>
                 </a>
               )}
-              {m.payload?.form && intakeMode && idx === messages.length - 1 && (
-                <IntakeFormCard
-                  form={m.payload.form}
-                  disabled={busy || aiBusy}
-                  onSubmit={(values) => submitForm(m.payload!.form!.fields, values)}
-                />
-              )}
               {m.payload?.proceed && idx === messages.length - 1 && (
                 <div className="mt-3 flex gap-2">
                   <button
@@ -346,7 +308,7 @@ export function Chat({
         {aiBusy && (
           <p className="mb-2 flex items-center gap-2 text-sm text-muted">
             <span aria-hidden className="h-1.5 w-1.5 animate-pulse rounded-full bg-gold" />
-            {intakeMode ? "Setting up the loan…" : "AI System is thinking…"}
+            AI System is thinking…
           </p>
         )}
         {aiError && (
@@ -354,7 +316,7 @@ export function Chat({
             {aiError}
           </p>
         )}
-        {isLender && !intakeMode && (
+        {isLender && (
           <label className="mb-2 flex w-fit items-center gap-2 text-sm text-muted">
             <input
               type="checkbox"
@@ -373,19 +335,17 @@ export function Chat({
               if (e.key === "Enter" && !e.shiftKey) send(e);
             }}
             rows={2}
-            placeholder={intakeMode ? "Answer to continue setup…" : "Message the team, or ask the AI…"}
+            placeholder="Message the team, or ask the AI…"
             className="field min-h-11 flex-1 resize-none"
           />
-          {!intakeMode && (
-            <button
-              type="button"
-              onClick={ask}
-              disabled={aiBusy || busy}
-              className="btn btn-secondary"
-            >
-              Ask AI
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={ask}
+            disabled={aiBusy || busy}
+            className="btn btn-secondary"
+          >
+            Ask AI
+          </button>
           <button type="submit" disabled={busy || aiBusy} className="btn btn-primary">
             Send
           </button>

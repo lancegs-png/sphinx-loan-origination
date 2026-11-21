@@ -69,7 +69,6 @@ export function DealTabs({
   currentRole,
   isLender,
   isBroker,
-  intakeMode,
   fieldDefs,
   fieldValues,
   checklist,
@@ -88,7 +87,6 @@ export function DealTabs({
   isLender: boolean;
   /** Broker portal view: only Loan Info + Documents, no Chat/People/Checklist. */
   isBroker: boolean;
-  intakeMode: boolean;
   fieldDefs: FieldDef[];
   fieldValues: FieldValues;
   checklist: ChecklistItem[];
@@ -142,7 +140,6 @@ export function DealTabs({
     currentUserId,
     currentRole,
     isLender,
-    intakeMode,
   };
 
   return (
