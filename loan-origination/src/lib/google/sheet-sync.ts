@@ -5,6 +5,8 @@ import { recomputeLoan } from "@/lib/calc";
 import { logEvent } from "@/lib/audit";
 import { writeCells, readCells } from "./sheets";
 import { LOAN_DATA_CELLS, DATA_TAPE_CELLS, cellValue } from "./dashboard";
+import { loadFieldDefs } from "@/lib/field-defs";
+import type { FieldValues } from "@/lib/types";
 
 /**
  * Live two-way bridge between a loan's field values and its "Loan Dashboard" Google Sheet.
@@ -135,7 +137,11 @@ export async function applySheetEdit(edit: SheetEdit): Promise<SheetEditResult> 
  * only the mapped input cells — the sheet recomputes its own formulas. No-op without a
  * linked sheet. Best-effort: callers must not let a Drive/Sheets error fail the save.
  */
-export async function pushFieldsToSheet(loanId: string, changedKeys: string[]): Promise<void> {
+export async function pushFieldsToSheet(
+  loanId: string,
+  changedKeys: string[],
+  preloaded?: FieldValues,
+): Promise<void> {
   const locs = changedKeys
     .map((k) => ({ k, loc: FIELD_TO_CELL.get(k) }))
     .filter((x): x is { k: string; loc: Loc } => !!x.loc);
@@ -145,11 +151,13 @@ export async function pushFieldsToSheet(loanId: string, changedKeys: string[]): 
   const { data: loan } = await admin.from("loans").select("sheet_id").eq("id", loanId).single();
   if (!loan?.sheet_id) return;
 
-  const [fv, { data: defs }] = await Promise.all([
-    loadFieldValues(admin, loanId),
-    admin.from("field_definitions").select("key,type"),
+  // Reuse the caller's values when supplied (saveLoanField passes recomputeLoan's result), and the
+  // cached field dictionary — so a field save does one loan_field_values read, not two.
+  const [fv, defs] = await Promise.all([
+    preloaded ? Promise.resolve(preloaded) : loadFieldValues(admin, loanId),
+    loadFieldDefs(),
   ]);
-  const typeByKey = new Map((defs ?? []).map((d) => [d.key, d.type as string]));
+  const typeByKey = new Map(defs.map((d) => [d.key, d.type]));
 
   const cells = locs.map(({ k, loc }) => {
     const base = k.includes("#") ? k.slice(0, k.indexOf("#")) : k;
@@ -180,14 +188,12 @@ export async function reconcileLoanSheet(loanId: string): Promise<{ changed: str
     return `'${tab}'!${cell}`;
   });
 
-  const [read, fv, { data: defs }] = await Promise.all([
+  const [read, fv, defs] = await Promise.all([
     readCells(sheetId, ranges),
     loadFieldValues(admin, loanId),
-    admin.from("field_definitions").select("key,type,source,options"),
+    loadFieldDefs(),
   ]);
-  const defMap = new Map(
-    (defs ?? []).map((d) => [d.key, d as { type: string; source: string | null; options: string[] | null }]),
-  );
+  const defMap = new Map(defs.map((d) => [d.key, d]));
 
   const changed: string[] = [];
   for (let i = 0; i < entries.length; i++) {

@@ -1,5 +1,6 @@
 import { secretOk } from "@/lib/admin-auth";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
+import { invalidateFieldDefs } from "@/lib/field-defs";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -47,6 +48,7 @@ export async function POST(req: Request) {
       .maybeSingle();
     if (error) return new Response(error.message, { status: 500 });
     if (!data) return Response.json({ ok: false, error: "field not found" }, { status: 404 });
+    invalidateFieldDefs(); // drop the in-memory dictionary cache so the change is read immediately
     return Response.json({ ok: true, field: data });
   }
 

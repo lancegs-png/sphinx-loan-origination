@@ -18,13 +18,11 @@ const TemplatesPanel = dynamic(() => import("./templates-panel").then((m) => m.T
 const PeoplePanel = dynamic(() => import("./people-panel").then((m) => m.PeoplePanel), { loading: PanelLoading });
 const NotesPanel = dynamic(() => import("./notes-panel").then((m) => m.NotesPanel), { loading: PanelLoading });
 const ActivityPanel = dynamic(() => import("./activity-panel").then((m) => m.ActivityPanel), { loading: PanelLoading });
-import type { ActivityEvent } from "@/lib/activity";
 import type {
   ChecklistItem,
   DealContact,
   FieldDef,
   FieldValues,
-  InternalNote,
   Loan,
   LoanDocument,
   Message,
@@ -64,7 +62,6 @@ export function DealTabs({
   loan,
   messages,
   participants,
-  internalNotes,
   currentUserId,
   currentRole,
   isLender,
@@ -74,14 +71,12 @@ export function DealTabs({
   checklist,
   stageTasks,
   documents,
-  activity,
   fieldLabels,
   atProcessing,
 }: {
   loan: Loan;
   messages: Message[];
   participants: Participant[];
-  internalNotes: InternalNote[];
   currentUserId: string;
   currentRole: string;
   isLender: boolean;
@@ -92,7 +87,6 @@ export function DealTabs({
   checklist: ChecklistItem[];
   stageTasks: StageTaskGroup[];
   documents: LoanDocument[];
-  activity: ActivityEvent[];
   fieldLabels: Record<string, string>;
   atProcessing: boolean;
 }) {
@@ -275,11 +269,11 @@ export function DealTabs({
               )}
 
               {tab === "notes" && isLender && (
-                <NotesPanel loanId={loan.id} initialNotes={internalNotes} />
+                <NotesPanel loanId={loan.id} />
               )}
 
               {tab === "activity" && isLender && (
-                <ActivityPanel loanId={loan.id} events={activity} fieldLabels={fieldLabels} />
+                <ActivityPanel loanId={loan.id} fieldLabels={fieldLabels} />
               )}
             </div>
           </div>

@@ -1,18 +1,19 @@
 "use client";
 
-import { useState } from "react";
-import { addInternalNote } from "@/app/actions";
+import { useEffect, useState } from "react";
+import { addInternalNote, fetchLoanNotes } from "@/app/actions";
 import type { InternalNote } from "@/lib/types";
 
-/** Team-only notes on a loan, with an inline composer to add more. */
-export function NotesPanel({
-  loanId,
-  initialNotes,
-}: {
-  loanId: string;
-  initialNotes: InternalNote[];
-}) {
-  const [notes, setNotes] = useState<InternalNote[]>(initialNotes);
+/** Team-only notes on a loan, with an inline composer to add more. Notes load on open. */
+export function NotesPanel({ loanId }: { loanId: string }) {
+  const [notes, setNotes] = useState<InternalNote[] | null>(null);
+  useEffect(() => {
+    let alive = true;
+    fetchLoanNotes(loanId).then((n) => alive && setNotes(n));
+    return () => {
+      alive = false;
+    };
+  }, [loanId]);
   const [body, setBody] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -29,7 +30,7 @@ export function NotesPanel({
       setError(res.error ?? "Couldn’t save the note.");
       return;
     }
-    setNotes((prev) => [...prev, res.note!]);
+    setNotes((prev) => [...(prev ?? []), res.note!]);
     setBody("");
   }
 
@@ -60,8 +61,9 @@ export function NotesPanel({
       </form>
 
       <ul className="space-y-3">
-        {notes.length === 0 && <p className="text-muted">No internal notes yet.</p>}
-        {notes.map((n) => (
+        {notes === null && <p className="text-muted">Loading…</p>}
+        {notes !== null && notes.length === 0 && <p className="text-muted">No internal notes yet.</p>}
+        {(notes ?? []).map((n) => (
           <li key={n.id} className="card p-3.5">
             <div className="mb-1 flex items-baseline justify-between gap-2 text-xs">
               <span className="font-semibold text-fg">

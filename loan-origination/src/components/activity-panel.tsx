@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { fetchLoanActivity } from "@/app/actions";
 import { describeEvent, actorName, type ActivityEvent } from "@/lib/activity";
 
 function fmtTime(iso: string): string {
@@ -14,14 +16,23 @@ function fmtTime(iso: string): string {
 
 export function ActivityPanel({
   loanId,
-  events,
   fieldLabels,
 }: {
   loanId: string;
-  events: ActivityEvent[];
   fieldLabels: Record<string, string>;
 }) {
   const labelFor = (k: string) => fieldLabels[k] ?? k;
+  // Loaded on open (not part of the loan page's initial fetch).
+  const [events, setEvents] = useState<ActivityEvent[] | null>(null);
+  useEffect(() => {
+    let alive = true;
+    fetchLoanActivity(loanId).then((e) => alive && setEvents(e));
+    return () => {
+      alive = false;
+    };
+  }, [loanId]);
+
+  if (events === null) return <p className="p-4 text-sm text-muted">Loading…</p>;
 
   return (
     <div className="flex flex-col gap-3">
