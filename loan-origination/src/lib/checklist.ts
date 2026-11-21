@@ -3,37 +3,6 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 import type { ChecklistItem, LoanDocument } from "@/lib/types";
 
-/**
- * Materialize a loan's checklist from its program's checklist on access — so the
- * Documents tab is populated (and borrowers can upload) from Intake onward, not only
- * once the loan reaches Processing. Additive and idempotent: it inserts only the
- * template documents the loan is actually missing (compared by document_type, not by
- * row count — a loan can hold extra, now-removed documents and still be missing a newly
- * added one), and existing rows' statuses/notes are untouched. The common case (loan
- * already has every template document) does no write.
- */
-async function ensureLoanChecklist(loanId: string, programId: string): Promise<void> {
-  const admin = createServiceRoleClient();
-  const [{ data: programItems }, { data: loanItems }] = await Promise.all([
-    admin.from("program_checklist_items").select("document_type_id").eq("program_id", programId),
-    admin.from("loan_checklist_items").select("document_type_id").eq("loan_id", loanId),
-  ]);
-  if (!programItems?.length) return;
-
-  const have = new Set((loanItems ?? []).map((i) => i.document_type_id as string));
-  const missing = programItems.filter((i) => !have.has(i.document_type_id as string));
-  if (!missing.length) return; // every template document is already present
-
-  const rows = missing.map((i) => ({
-    loan_id: loanId,
-    document_type_id: i.document_type_id,
-    status: "outstanding",
-  }));
-  await admin
-    .from("loan_checklist_items")
-    .upsert(rows, { onConflict: "loan_id,document_type_id", ignoreDuplicates: true });
-}
-
 /** Load a loan's uploaded documents (newest last), for listing under each checklist item. */
 export async function loadLoanDocuments(
   client: SupabaseClient,
@@ -54,36 +23,57 @@ export async function loadLoanChecklist(
   programId: string | null,
   isLender: boolean,
 ): Promise<ChecklistItem[]> {
-  // Populate the checklist from the program on first view (idempotent), so documents
-  // are available for upload starting at Intake.
-  if (programId) await ensureLoanChecklist(loanId, programId);
+  type Pci = {
+    document_type_id: string;
+    category: string | null;
+    assignee: string;
+    visibility: string;
+    sort: number;
+  };
 
-  const { data: items } = await client
-    .from("loan_checklist_items")
-    .select("id,document_type_id,status,notes")
-    .eq("loan_id", loanId);
-  if (!items?.length) return [];
-
-  const docIds = items.map((i) => i.document_type_id);
-  const [{ data: docs }, { data: pci }] = await Promise.all([
-    client.from("document_types").select("id,name,default_review_rules").in("id", docIds),
+  // One read of each table (not two): the program checklist both drives which documents a loan
+  // should have and supplies category/assignee/visibility/sort for the rows.
+  const [{ data: itemRows }, { data: pciData }] = await Promise.all([
+    client.from("loan_checklist_items").select("id,document_type_id,status,notes").eq("loan_id", loanId),
     programId
       ? client
           .from("program_checklist_items")
           .select("document_type_id,category,assignee,visibility,sort")
           .eq("program_id", programId)
-      : Promise.resolve({
-          data: [] as {
-            document_type_id: string;
-            category: string | null;
-            assignee: string;
-            visibility: string;
-            sort: number;
-          }[],
-        }),
+      : Promise.resolve({ data: [] as Pci[] }),
   ]);
+
+  let items = itemRows ?? [];
+  const pci = (pciData as Pci[] | null) ?? [];
+
+  // Materialize any missing template documents on first view (idempotent), so the Documents tab
+  // is populated from Intake onward. Writes — and re-reads — only when something is missing; the
+  // common case (every template document present) does neither.
+  if (programId && pci.length) {
+    const have = new Set(items.map((i) => i.document_type_id as string));
+    const missing = pci.filter((p) => !have.has(p.document_type_id));
+    if (missing.length) {
+      const admin = createServiceRoleClient();
+      await admin.from("loan_checklist_items").upsert(
+        missing.map((p) => ({ loan_id: loanId, document_type_id: p.document_type_id, status: "outstanding" })),
+        { onConflict: "loan_id,document_type_id", ignoreDuplicates: true },
+      );
+      const { data: refreshed } = await client
+        .from("loan_checklist_items")
+        .select("id,document_type_id,status,notes")
+        .eq("loan_id", loanId);
+      items = refreshed ?? items;
+    }
+  }
+  if (!items.length) return [];
+
+  const docIds = items.map((i) => i.document_type_id);
+  const { data: docs } = await client
+    .from("document_types")
+    .select("id,name,default_review_rules")
+    .in("id", docIds);
   const docMap = Object.fromEntries((docs ?? []).map((d) => [d.id, d]));
-  const pciMap = Object.fromEntries((pci ?? []).map((p) => [p.document_type_id, p]));
+  const pciMap = Object.fromEntries(pci.map((p) => [p.document_type_id, p]));
 
   return items
     .map((i) => ({
