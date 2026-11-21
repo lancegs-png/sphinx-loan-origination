@@ -30,7 +30,6 @@ export function DealView({
   currentRole,
   isLender,
   isBroker,
-  intakeMode,
   fieldDefs,
   fieldValues,
   checklist,
@@ -48,7 +47,6 @@ export function DealView({
   currentRole: string;
   isLender: boolean;
   isBroker: boolean;
-  intakeMode: boolean;
   fieldDefs: FieldDef[];
   fieldValues: FieldValues;
   checklist: ChecklistItem[];
@@ -104,7 +102,6 @@ export function DealView({
         currentRole={currentRole}
         isLender={isLender}
         isBroker={isBroker}
-        intakeMode={intakeMode}
         fieldDefs={fieldDefs}
         fieldValues={fieldValues}
         checklist={checklist}

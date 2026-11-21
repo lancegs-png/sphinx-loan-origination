@@ -118,11 +118,6 @@ export default async function LoanPage({
       currentRole={myRole}
       isLender={isLender}
       isBroker={isBroker}
-      intakeMode={
-        // Chat intake retired (Phase 1): the native intake form (/intake) is the single intake
-        // surface, so the per-loan chat is general Q&A only. See docs/intake-crm-design.md §3.1.
-        false
-      }
       fieldDefs={fieldDefs}
       fieldValues={fieldValues}
       checklist={checklist}

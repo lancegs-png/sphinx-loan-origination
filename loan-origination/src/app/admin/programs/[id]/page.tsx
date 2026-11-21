@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { AppShell } from "@/components/app-shell";
 import { navFor } from "@/lib/nav";
 import { ProgramConfigEditor } from "@/components/program-config-editor";
-import type { QuoteField } from "@/lib/ai/intake";
+import type { QuoteField } from "@/lib/program-ai-config";
 
 export default async function ProgramConfigPage({
   params,

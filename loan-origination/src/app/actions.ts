@@ -6,7 +6,6 @@ import {
   coerceForType,
   setFieldLockRow,
   upsertFieldValue,
-  writeIntakeFields,
 } from "@/lib/fields";
 import { recomputeLoan } from "@/lib/calc";
 import { sheetsConfigured, appendSheetRow, LOAN_TRACKER_SHEET_ID } from "@/lib/google/sheets";
@@ -21,14 +20,7 @@ import { openDeal } from "@/lib/loans/open-deal";
 import { getActiveLink, isRateLimited, recordSubmission, newLinkToken } from "@/lib/intake/links";
 import { STAGES } from "@/lib/stages";
 import { isLoanStatus } from "@/lib/status";
-import {
-  runIntakeTurn,
-  detectLoanTypeKey,
-  PROGRAM_LABEL,
-  type ProgramAiConfig,
-  type GlobalIntakeConfig,
-  type QuoteField,
-} from "@/lib/ai/intake";
+import type { QuoteField } from "@/lib/program-ai-config";
 import type { DealContact, InternalNote } from "@/lib/types";
 
 /**
@@ -286,176 +278,6 @@ export async function deleteIntakeLink(id: string): Promise<{ ok: boolean; error
   const supabase = await createClient();
   const { error } = await supabase.from("intake_links").delete().eq("id", id);
   return error ? { ok: false, error: error.message } : { ok: true };
-}
-
-/**
- * One turn of the conversational intake (design §6). The chat posts the user's
- * message, then calls this; the AI extracts fields, updates the loan record, and
- * replies with the next question. Field writes go through the service role after
- * the user-scoped retrieval confirms access; the reply is a shared AI message.
- */
-export async function intakeTurn(
-  loanId: string,
-  userText: string,
-): Promise<{ ok: boolean; error?: string }> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { ok: false, error: "Not signed in." };
-
-  const { data: loan } = await supabase
-    .from("loans")
-    .select("stage,program_id,custom_fields")
-    .eq("id", loanId)
-    .single();
-  if (!loan) return { ok: false, error: "No access to this loan." };
-  if (loan.stage !== "intake") return { ok: false, error: "This loan is past intake." };
-
-  const admin = createServiceRoleClient();
-
-  // Global intake config (applies before a program is known). Read via service role —
-  // it's org config, not loan data (design §5.2).
-  let global: GlobalIntakeConfig = { baseFields: [], style: null, examples: null };
-  {
-    const { data: row } = await admin
-      .from("app_settings")
-      .select("value")
-      .eq("key", "intake_global")
-      .single();
-    const v = (row?.value ?? {}) as {
-      base_fields?: QuoteField[];
-      style?: string | null;
-      examples?: string | null;
-    };
-    global = {
-      baseFields: Array.isArray(v.base_fields) ? v.base_fields : [],
-      style: v.style ?? null,
-      examples: v.examples ?? null,
-    };
-  }
-
-  // Resolve the effective program: the one already set, else detect the loan type from
-  // this turn's text so the program layer applies in the SAME turn (no one-turn lag).
-  let effectiveProgramId: string | null = loan.program_id ?? null;
-  if (!effectiveProgramId) {
-    const key = detectLoanTypeKey(userText);
-    if (key) {
-      const { data: prog } = await supabase
-        .from("loan_programs")
-        .select("id")
-        .eq("loan_type_key", key)
-        .single();
-      if (prog) effectiveProgramId = prog.id;
-    }
-  }
-
-  let program: ProgramAiConfig = { quoteFields: [], style: null, examples: null };
-  if (effectiveProgramId) {
-    const { data: cfg } = await admin
-      .from("program_ai_config")
-      .select("quote_fields,intake_style,intake_examples")
-      .eq("program_id", effectiveProgramId)
-      .single();
-    if (cfg) {
-      program = {
-        quoteFields: Array.isArray(cfg.quote_fields) ? cfg.quote_fields : [],
-        style: cfg.intake_style,
-        examples: cfg.intake_examples,
-      };
-    }
-  }
-
-  let result: Awaited<ReturnType<typeof runIntakeTurn>>;
-  try {
-    result = await runIntakeTurn({ supabase, loanId, global, program });
-  } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : "Intake failed." };
-  }
-  if (!result) return { ok: false, error: "No access to this loan." };
-
-  const { reply, fields, form } = result;
-
-  // Program: set program_id directly; the loan_program field (written below) syncs the
-  // loans.loan_type / loan_program summary columns via trigger.
-  if (fields.loan_type_key) {
-    const { data: prog } = await supabase
-      .from("loan_programs")
-      .select("id")
-      .eq("loan_type_key", fields.loan_type_key)
-      .single();
-    if (prog) await admin.from("loans").update({ program_id: prog.id }).eq("id", loanId);
-  }
-
-  // P17: the intake agent reports dictionary keys directly. Write captured facts into
-  // loan_field_values (the single store), then recompute derived fields. Summary columns
-  // (borrower_name, property_address, ...) sync from the field values by trigger.
-  const intakeRaw: Record<string, unknown> = { ...(fields.fields ?? {}) };
-  if (fields.loan_type_key) {
-    intakeRaw.loan_program = PROGRAM_LABEL[fields.loan_type_key] ?? fields.loan_type_key.toUpperCase();
-  }
-  if (fields.notes) intakeRaw.loan_request_summary = fields.notes;
-  if (Object.keys(intakeRaw).length) {
-    const { data: defRows } = await admin.from("field_definitions").select("key,type,source");
-    const defs = Object.fromEntries(
-      (defRows ?? []).map((d) => [d.key, { type: d.type as string, source: d.source as string | null }]),
-    );
-    await writeIntakeFields(admin, loanId, intakeRaw, defs);
-    try {
-      await recomputeLoan(loanId);
-    } catch {
-      /* calc is best-effort */
-    }
-    await logEvent(admin, {
-      loanId,
-      actorKind: "ai",
-      eventType: "intake_recorded",
-      payload: { fields: Object.keys(intakeRaw) },
-    });
-  }
-
-  const { error } = await admin.from("messages").insert({
-    loan_id: loanId,
-    sender_kind: "ai",
-    sender_role: "ai",
-    is_internal: false,
-    body: reply,
-    payload: form ? { form } : null,
-  });
-  if (error) return { ok: false, error: error.message };
-
-  return { ok: true };
-}
-
-/**
- * Admin: save the GLOBAL intake config — base/opening questions, default style,
- * default examples. Applies before a loan program is known. RLS restricts to Admin.
- */
-export async function saveGlobalIntakeConfig(input: {
-  baseFields: QuoteField[];
-  style: string;
-  examples: string;
-}): Promise<{ ok: boolean; error?: string }> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { ok: false, error: "Not signed in." };
-
-  const { error } = await supabase.from("app_settings").upsert(
-    {
-      key: "intake_global",
-      value: {
-        base_fields: input.baseFields,
-        style: input.style.trim() || null,
-        examples: input.examples.trim() || null,
-      },
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: "key" },
-  );
-  if (error) return { ok: false, error: error.message };
-  return { ok: true };
 }
 
 // ---------- M4: DSCR quoting ----------
