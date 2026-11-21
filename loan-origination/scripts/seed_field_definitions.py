@@ -5,10 +5,13 @@ Seed public.field_definitions from the Sphinx Loan Data Dictionary (Field Dictio
 Idempotent: upserts on `key` (PostgREST merge-duplicates). Run after migration 0009.
 
 Usage:
-  python3 scripts/seed_field_definitions.py --xlsx "/path/Sphinx Loan Data Dictionary v0.6.xlsx" --dry-run
-  python3 scripts/seed_field_definitions.py --xlsx "/path/.../v0.6.xlsx"        # live upsert
+  python3 scripts/seed_field_definitions.py --xlsx "/path/Sphinx Loan Data Dictionary.xlsx" --dry-run
+  python3 scripts/seed_field_definitions.py --xlsx "/path/..xlsx"                 # direct PostgREST
+  python3 scripts/seed_field_definitions.py --xlsx "/path/..xlsx" \
+      --endpoint https://<app>/api/admin/seed-field-defs                          # via deployed route
 
-Live mode reads NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY from .env.local.
+Direct mode reads NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY from .env.local; use
+--endpoint (with SHEETS_SYNC_SECRET from .env.local) when the local service key is revoked.
 Dry-run writes the computed rows to scripts/out/field_definitions.json and prints a summary.
 """
 import argparse, json, os, re, sys, urllib.request
@@ -33,9 +36,13 @@ def map_type(t: str) -> str:
         return "date"
     if "enum" in t:
         return "select"
+    if "email" in t:
+        return "email"
+    if "phone" in t:
+        return "phone"
     if "integer" in t or "decimal" in t or t.strip() == "number":
         return "number"
-    return "text"  # text, long text, email, phone, uuid
+    return "text"  # text, long text, uuid
 
 
 def norm_section(s: str):
@@ -125,7 +132,9 @@ def build_rows(xlsx_path: str):
             "options": options,
             # hashtag intentionally omitted: new fields use {{key}}; omitting it on upsert
             # leaves any existing row's hashtag (old #alias) untouched (brief decision 1).
-            "lender_only": section == "trade",
+            # Internal sections hidden from brokers/borrowers in the UI; flag lender_only so RLS
+            # matches (keeps migration 0030's fix; broker_visible is omitted here so it survives).
+            "lender_only": section in ("trade", "closing", "data_tape", "admin"),
             "verifiable": verifiable,
             "repeat_group": repeat_group,
             "programs": programs,
@@ -137,13 +146,18 @@ def build_rows(xlsx_path: str):
     return out, skipped, warnings
 
 
-def upsert(rows):
+def load_env():
     env = {}
     with open(os.path.join(os.path.dirname(__file__), "..", ".env.local")) as f:
         for line in f:
             if "=" in line:
                 k, v = line.split("=", 1)
                 env[k.strip()] = v.strip()
+    return env
+
+
+def upsert(rows):
+    env = load_env()
     url = env["NEXT_PUBLIC_SUPABASE_URL"] + "/rest/v1/field_definitions?on_conflict=key"
     body = json.dumps(rows).encode()
     req = urllib.request.Request(url, data=body, method="POST")
@@ -155,10 +169,23 @@ def upsert(rows):
         return resp.status
 
 
+def post_endpoint(rows, endpoint):
+    """Upsert via the deployed /api/admin/seed-field-defs route (service role lives server-side;
+    the local key is revoked). Secret read from .env.local SHEETS_SYNC_SECRET."""
+    env = load_env()
+    body = json.dumps({"secret": env["SHEETS_SYNC_SECRET"], "rows": rows}).encode()
+    req = urllib.request.Request(endpoint, data=body, method="POST")
+    req.add_header("Content-Type", "application/json")
+    with urllib.request.urlopen(req) as resp:
+        return resp.status, resp.read().decode()
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--xlsx", required=True)
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--endpoint", help="Deployed /api/admin/seed-field-defs URL; upsert through it "
+                    "instead of PostgREST (use when the local service key is revoked).")
     args = ap.parse_args()
 
     rows, skipped, warnings = build_rows(args.xlsx)
@@ -184,6 +211,10 @@ def main():
         path = os.path.join(outdir, "field_definitions.json")
         json.dump(rows, open(path, "w"), indent=2)
         print(f"\nDry run — wrote {path}")
+        return
+    if args.endpoint:
+        status, resp = post_endpoint(rows, args.endpoint)
+        print(f"\nUpserted via endpoint. HTTP {status} {resp}")
         return
     status = upsert(rows)
     print(f"\nUpserted. HTTP {status}")
