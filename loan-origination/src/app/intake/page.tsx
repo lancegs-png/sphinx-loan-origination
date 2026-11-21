@@ -5,20 +5,22 @@ import { navFor } from "@/lib/nav";
 import { IntakeForm } from "@/components/intake-form";
 
 /**
- * Manual intake entry (Phase 1): lending-team-only page that opens an Opportunity from the
- * native intake form. The public, white-label version of this form lands in Phase 3.
+ * Intake entry: the native intake form that opens an Opportunity. Lending team enter deals
+ * here; brokers use the same form in the broker portal (submitted and attributed to them).
  */
 export default async function IntakePage() {
   const session = await getSessionProfile();
   if (!session) redirect("/login");
-  if (!session.profile?.lender_user_type) redirect("/");
+  const isLender = !!session.profile?.lender_user_type;
+  const isBroker = session.profile?.external_type === "broker";
+  if (!isLender && !isBroker) redirect("/");
 
   const nav = navFor(session.profile);
 
   return (
     <AppShell email={session.profile?.email ?? ""} nav={nav}>
       <div className="p-6">
-        <IntakeForm />
+        <IntakeForm broker={isBroker} />
       </div>
     </AppShell>
   );

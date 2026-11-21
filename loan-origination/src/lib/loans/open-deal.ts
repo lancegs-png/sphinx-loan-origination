@@ -77,6 +77,8 @@ export type OpenDealInput = {
   sheetId?: string | null;
   /** App path: the creating lender — sets created_by, adds them as a participant, greets. */
   createdByUserId?: string | null;
+  /** Participant role for the creator (default "lending_team"); "broker" for broker self-submissions. */
+  createdByRole?: "lending_team" | "broker";
   accountManagerId?: string | null;
   /** Full intake-form submission: stored as an immutable snapshot and seeded as field values. */
   intake?: Record<string, unknown> | null;
@@ -254,7 +256,7 @@ export async function openDeal(
     const kind = assignNumber ? "loan" : "opportunity";
     await admin
       .from("deal_participants")
-      .insert({ loan_id: loan.id, user_id: input.createdByUserId, participant_role: "lending_team", added_by: input.createdByUserId })
+      .insert({ loan_id: loan.id, user_id: input.createdByUserId, participant_role: input.createdByRole ?? "lending_team", added_by: input.createdByUserId })
       .then(() => {}, () => {});
     await admin
       .from("messages")

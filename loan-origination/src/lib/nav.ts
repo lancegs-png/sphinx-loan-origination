@@ -6,11 +6,14 @@ import type { Profile } from "@/lib/types";
  * admins. Every page passes its result to <AppShell nav=…>, so top-level sections
  * live in a single place.
  */
-export function navFor(profile?: Pick<Profile, "lender_user_type"> | null): NavItem[] {
+export function navFor(profile?: Pick<Profile, "lender_user_type" | "external_type"> | null): NavItem[] {
   const nav: NavItem[] = [{ href: "/", label: "Pipeline", icon: "pipeline", match: "exact" }];
   if (profile?.lender_user_type) {
     nav.push({ href: "/intake", label: "New Intake", icon: "pipeline", match: "prefix" });
     nav.push({ href: "/guarantors", label: "Guarantors & Entities", icon: "people", match: "prefix" });
+  } else if (profile?.external_type === "broker") {
+    // Broker portal: submit a new loan via the intake form.
+    nav.push({ href: "/intake", label: "New Loan", icon: "pipeline", match: "prefix" });
   }
   if (profile?.lender_user_type === "admin") {
     nav.push({ href: "/admin", label: "Settings", icon: "settings", match: "prefix" });

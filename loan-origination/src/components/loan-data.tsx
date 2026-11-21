@@ -169,12 +169,15 @@ export function LoanData({
   values,
   canEdit,
   isLender,
+  isBroker = false,
 }: {
   loan: Loan;
   fieldDefs: FieldDef[];
   values: FieldValues;
   canEdit: boolean;
   isLender: boolean;
+  /** Broker portal: restrict to the broker sections + broker-safe fields. */
+  isBroker?: boolean;
 }) {
   const [status, setStatus] = useState<{ text: string; ok: boolean } | null>(null);
   const router = useRouter();
@@ -253,9 +256,16 @@ export function LoanData({
   }
 
   // Hide the internal sections (trade / closing / data tape) and any lender-only field
-  // from non-lenders (RLS already omits their values).
+  // from non-lenders (RLS already omits their values). Brokers get the broker sections plus
+  // the broker-safe subset of otherwise-lender-only fields (e.g. select Closing Calculations),
+  // matching the RLS broker tier in 0030_broker_portal.sql.
   const INTERNAL_SECTIONS = new Set(["trade", "closing", "data_tape"]);
-  const defs = fieldDefs.filter((d) => isLender || (!INTERNAL_SECTIONS.has(d.section) && !d.lender_only));
+  const BROKER_SECTIONS = new Set(["loan", "property", "borrower", "contact", "closing", "intake_form"]);
+  const defs = fieldDefs.filter((d) => {
+    if (isLender) return true;
+    if (isBroker) return BROKER_SECTIONS.has(d.section) && (!d.lender_only || d.broker_visible);
+    return !INTERNAL_SECTIONS.has(d.section) && !d.lender_only;
+  });
 
   async function save(def: FieldDef, valueKind: "initial" | "verified", value: string) {
     const res = await saveLoanField({
@@ -391,7 +401,7 @@ export function LoanData({
     .sort((a, b) => a.sort - b.sort);
 
   let intakeCard: ReactNode = null;
-  if (isLender && intakeRows.length) {
+  if ((isLender || isBroker) && intakeRows.length) {
     const submitted = snapshot?.intake_snapshot?.submitted_at;
     intakeCard = cardShell(
       "intake_form",
@@ -409,7 +419,7 @@ export function LoanData({
         ))}
       </>,
     );
-  } else if (isLender && propInitials.length) {
+  } else if ((isLender || isBroker) && propInitials.length) {
     intakeCard = cardShell(
       "intake_form",
       "Intake Form Data",

@@ -3,6 +3,7 @@ import { getSessionProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { loadGuarantorNames } from "@/lib/fields";
 import { PipelineHome } from "@/components/pipeline-home";
+import { BrokerPipeline } from "@/components/broker-pipeline";
 import { LoanPicker } from "@/components/loan-picker";
 import type { Loan } from "@/lib/types";
 
@@ -26,6 +27,12 @@ export default async function Home() {
   if (profile.is_lending_team) {
     const guarantors = await loadGuarantorNames(supabase);
     return <PipelineHome loans={loans} profile={profile} guarantors={guarantors} />;
+  }
+
+  // Broker portal → their own pipeline (RLS scopes `loans` to their participant deals).
+  if (profile.external_type === "broker") {
+    const guarantors = await loadGuarantorNames(supabase);
+    return <BrokerPipeline loans={loans} profile={profile} guarantors={guarantors} />;
   }
 
   // Borrower/originator: one loan → open it; multiple → picker (R-UI-10).
