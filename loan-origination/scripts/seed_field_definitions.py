@@ -1,88 +1,64 @@
 #!/usr/bin/env python3
 """
-Seed public.field_definitions from the Sphinx Loan Data Dictionary (Field Dictionary tab).
+Sync public.field_definitions from the Sphinx Loan Data Dictionary ("Loan Data" tab).
 
-Idempotent: upserts on `key` (PostgREST merge-duplicates). Run after migration 0009.
+Targeted, idempotent upsert on `key` (merge-duplicates): writes only the columns the dictionary
+owns for display/visibility — key, label, section, type, options, lender_only, repeat_group — and
+OMITS source, required_stage, calc_key, verifiable, programs, sort and broker_visible so existing
+DB values survive. This is deliberate: a full overwrite would clobber later migrations (e.g. 0011
+set `ltv` source=manual though the sheet lists it calculated) and the app's programs model, and
+re-open migration 0030's RLS fix (the sheet flags only `trade` as "Lender only", not closing/admin).
+
+`lender_only` is the sheet's "Lender only" column OR membership in an internal section
+(trade/closing/data_tape/admin), so the UI-hidden sections stay protected at the DB.
 
 Usage:
-  python3 scripts/seed_field_definitions.py --xlsx "/path/Sphinx Loan Data Dictionary.xlsx" --dry-run
-  python3 scripts/seed_field_definitions.py --xlsx "/path/..xlsx"                 # direct PostgREST
-  python3 scripts/seed_field_definitions.py --xlsx "/path/..xlsx" \
-      --endpoint https://<app>/api/admin/seed-field-defs                          # via deployed route
+  python3 scripts/seed_field_definitions.py --xlsx "/path/Loan Data Dictionary.xlsx" --dry-run
+  python3 scripts/seed_field_definitions.py --json "/path/grid.json" --dry-run      # rows as a 2D array
+  python3 scripts/seed_field_definitions.py --json "/path/grid.json" \
+      --endpoint https://<app>/api/admin/seed-field-defs                            # via deployed route
 
-Direct mode reads NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY from .env.local; use
---endpoint (with SHEETS_SYNC_SECRET from .env.local) when the local service key is revoked.
-Dry-run writes the computed rows to scripts/out/field_definitions.json and prints a summary.
+--endpoint posts {secret, rows} to the deployed admin route (SHEETS_SYNC_SECRET from .env.local);
+use it because the local service-role key is revoked. Direct PostgREST mode (no --endpoint) needs a
+live SUPABASE_SERVICE_ROLE_KEY. Dry-run writes scripts/out/field_definitions.json and a summary.
 """
-import argparse, json, os, re, sys, urllib.request
-import openpyxl
+import argparse, json, os, urllib.request
 
-VALID_STAGES = {
-    "intake", "pre_qualification", "quote_term_sheet", "onboarding", "processing",
-    "underwriting", "final_approval", "closing", "post_close",
-}
-VALID_SOURCES = {"intake", "manual", "calculated", "system", "config"}
+# Sections hidden from brokers/borrowers in the UI; flagged lender_only so RLS matches the UI
+# (keeps migration 0030's fix). broker_visible is omitted here, so the broker-safe subset survives.
+INTERNAL_SECTIONS = {"trade", "closing", "data_tape", "admin"}
 # Identity / system columns that live on `loans`, not as editable fields.
 SKIP_KEYS = {"deal_id", "loan_number", "stage"}
 
 
 def map_type(t: str) -> str:
-    t = (t or "").lower()
+    t = (t or "").lower().strip()
     if "currency" in t:
         return "currency"
     if "percent" in t:
         return "percent"
-    if t.strip() == "date":
+    if t == "date":
         return "date"
-    if "enum" in t:
+    if "select" in t or "enum" in t:
         return "select"
     if "email" in t:
         return "email"
-    if "phone" in t:
+    if "phone" in t:  # "phone number" -> phone (checked before number)
         return "phone"
-    if "integer" in t or "decimal" in t or t.strip() == "number":
+    if "integer" in t or "decimal" in t or t == "number":
         return "number"
     return "text"  # text, long text, uuid
 
 
-def norm_section(s: str):
-    s = (s or "").strip().lower()
-    if s.startswith("app_settings"):
-        return None  # company config -> app_settings table (P19), not a field
-    base = s.split("(")[0].strip().split()
-    return base[0] if base else None
-
-
 def parse_options(allowed: str):
-    if not allowed:
-        return []
-    low = allowed.lower()
-    if "existing" in low or "list from" in low or "e.g." in low or "format" in low.split(":")[0]:
-        return []  # not an enumerable value list; leave for manual review
-    parts, depth, cur = [], 0, ""
-    for ch in allowed:
-        if ch == "(":
-            depth += 1; cur += ch
-        elif ch == ")":
-            depth = max(0, depth - 1); cur += ch
-        elif ch == "," and depth == 0:
-            parts.append(cur); cur = ""
-        else:
-            cur += ch
-    parts.append(cur)
-    opts = []
-    for p in parts:
-        p = re.sub(r"\(.*?\)", "", p).strip().strip("[]").strip()
-        if p:
-            opts.append(p)
-    return opts
+    """New sheet: a clean comma-separated enum list. Values may contain parenthetical notes with no
+    inner comma, so a plain split is safe."""
+    return [p.strip() for p in (allowed or "").split(",") if p.strip()]
 
 
-def build_rows(xlsx_path: str):
-    wb = openpyxl.load_workbook(xlsx_path, read_only=True, data_only=True)
-    ws = wb["Field Dictionary"]
-    rows = list(ws.iter_rows(values_only=True))
-    H = {("" if c is None else str(c).strip()): i for i, c in enumerate(rows[0])}
+def build_rows_from_grid(rows):
+    header = rows[0]
+    H = {("" if c is None else str(c).strip()): i for i, c in enumerate(header)}
 
     def g(r, name):
         i = H.get(name)
@@ -91,59 +67,46 @@ def build_rows(xlsx_path: str):
         return "" if r[i] is None else str(r[i]).strip()
 
     out, skipped, warnings = [], [], []
-    sort = 0
     for r in rows[1:]:
-        tag = g(r, "Tag")
-        if not tag:
-            continue
-        section = norm_section(g(r, "Supabase section"))
-        if section is None:
-            skipped.append((tag, "app_settings"))
-            continue
-        key = tag.replace("_n_", "_")
+        key = g(r, "Key")
+        if not key:
+            continue  # blank spacer / note rows at the bottom
         if key in SKIP_KEYS:
-            skipped.append((tag, "system column"))
+            skipped.append((key, "system column"))
             continue
-
-        lvl = g(r, "Level").lower()
-        repeat_group = "property" if lvl == "property" else ("guarantor" if lvl == "guarantor" else None)
+        section = (g(r, "Section").lower().split() or [""])[0]
+        if not section:
+            skipped.append((key, "no section"))
+            continue
         typ = map_type(g(r, "Type"))
-        options = parse_options(g(r, "Allowed values / format")) if typ == "select" else []
-        if typ == "select" and not options:
-            warnings.append(f"{key}: enum with no parsed options (allowed='{g(r,'Allowed values / format')}')")
+        options = parse_options(g(r, "Options")) if typ == "select" else []
+        rep = g(r, "Repeat").lower()
+        repeat_group = rep if rep in ("property", "guarantor") else None
+        sheet_lender = g(r, "Lender only").upper() in ("TRUE", "YES", "1")
+        lender_only = sheet_lender or section in INTERNAL_SECTIONS
 
-        prog = g(r, "Program").strip()
-        # Match loan_programs.loan_type_key, which is lowercase (dscr, rtl, ...).
-        programs = [] if prog.lower() in ("both", "", "n/a") else [prog.lower()]
-        verifiable = "verified" in g(r, "Initial / Verified").lower()
-        stage = g(r, "Supabase stage").strip()
-        required_stage = stage if stage in VALID_STAGES else None
-        source = g(r, "Source").strip().lower()
-        if source not in VALID_SOURCES:
-            source = None
-        calc_key = key if source == "calculated" else None
-
-        sort += 10
         out.append({
             "key": key,
             "label": g(r, "Label") or key,
             "section": section,
             "type": typ,
             "options": options,
-            # hashtag intentionally omitted: new fields use {{key}}; omitting it on upsert
-            # leaves any existing row's hashtag (old #alias) untouched (brief decision 1).
-            # Internal sections hidden from brokers/borrowers in the UI; flag lender_only so RLS
-            # matches (keeps migration 0030's fix; broker_visible is omitted here so it survives).
-            "lender_only": section in ("trade", "closing", "data_tape", "admin"),
-            "verifiable": verifiable,
+            "lender_only": lender_only,
             "repeat_group": repeat_group,
-            "programs": programs,
-            "required_stage": required_stage,
-            "source": source,
-            "calc_key": calc_key,
-            "sort": sort,
+            # omitted (preserved on existing rows): source, required_stage, calc_key, verifiable,
+            # programs, sort, broker_visible.
         })
     return out, skipped, warnings
+
+
+def load_grid(xlsx_path, json_path):
+    if json_path:
+        data = json.load(open(json_path))
+        return data["values"] if isinstance(data, dict) else data
+    import openpyxl
+    wb = openpyxl.load_workbook(xlsx_path, read_only=True, data_only=True)
+    ws = wb["Loan Data"] if "Loan Data" in wb.sheetnames else wb[wb.sheetnames[0]]
+    return [list(r) for r in ws.iter_rows(values_only=True)]
 
 
 def load_env():
@@ -182,28 +145,37 @@ def post_endpoint(rows, endpoint):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--xlsx", required=True)
+    src = ap.add_mutually_exclusive_group(required=True)
+    src.add_argument("--xlsx", help="Dictionary workbook; reads the 'Loan Data' tab.")
+    src.add_argument("--json", help="Grid as a 2D array (or a get_values response object).")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--endpoint", help="Deployed /api/admin/seed-field-defs URL; upsert through it "
                     "instead of PostgREST (use when the local service key is revoked).")
     args = ap.parse_args()
 
-    rows, skipped, warnings = build_rows(args.xlsx)
+    rows, skipped, warnings = build_rows_from_grid(load_grid(args.xlsx, args.json))
     print(f"Built {len(rows)} field rows. Skipped {len(skipped)} rows.")
     by_sec = {}
     for r in rows:
-        by_sec.setdefault(r["section"], 0)
-        by_sec[r["section"]] += 1
+        by_sec[r["section"]] = by_sec.get(r["section"], 0) + 1
     print("By section:", by_sec)
-    print("Verifiable:", sum(1 for r in rows if r["verifiable"]),
-          "| Calculated:", sum(1 for r in rows if r["source"] == "calculated"),
+    by_type = {}
+    for r in rows:
+        by_type[r["type"]] = by_type.get(r["type"], 0) + 1
+    print("By type:", by_type)
+    print("Lender-only:", sum(1 for r in rows if r["lender_only"]),
           "| Repeat(property):", sum(1 for r in rows if r["repeat_group"] == "property"),
           "| Repeat(guarantor):", sum(1 for r in rows if r["repeat_group"] == "guarantor"))
+    emails = [r["key"] for r in rows if r["type"] == "email"]
+    phones = [r["key"] for r in rows if r["type"] == "phone"]
+    print("Email-typed:", ", ".join(emails))
+    print("Phone-typed:", ", ".join(phones))
+    print("Admin section:", ", ".join(r["key"] for r in rows if r["section"] == "admin"))
+    print("Contact section:", ", ".join(r["key"] for r in rows if r["section"] == "contact"))
     if warnings:
-        print("\nWARNINGS (review enum options manually):")
-        for w in warnings:
-            print("  -", w)
-    print("\nSkipped ->", ", ".join(f"{t}({why})" for t, why in skipped))
+        print("\nWARNINGS:", *(f"\n  - {w}" for w in warnings))
+    if skipped:
+        print("\nSkipped ->", ", ".join(f"{t}({why})" for t, why in skipped))
 
     if args.dry_run:
         outdir = os.path.join(os.path.dirname(__file__), "out")
