@@ -18,6 +18,7 @@ import { answerLoanQuestion } from "@/lib/ai/record-keeper";
 import { loadLoanChecklist } from "@/lib/checklist";
 import { openDeal } from "@/lib/loans/open-deal";
 import { getActiveLink, isRateLimited, recordSubmission, newLinkToken } from "@/lib/intake/links";
+import { notifyBrokerOfSubmission } from "@/lib/intake/broker-notify";
 import { STAGES } from "@/lib/stages";
 import { isLoanStatus } from "@/lib/status";
 import type { QuoteField } from "@/lib/program-ai-config";
@@ -198,8 +199,22 @@ export async function submitPublicIntake(input: {
       accountManagerId: link.owner_type === "sphinx_originator" ? link.owner_user_id : null,
       intake: clean,
     });
-    const ip = (await headers()).get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
+    const h = await headers();
+    const ip = h.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
     await recordSubmission(link.id, link.token, result.id, ip);
+    // Notify the broker whose shareable link brought the deal in, with a copy of the responses.
+    if (link.owner_type === "broker" && link.owner_email) {
+      const ownerEmail = link.owner_email;
+      const host = h.get("host");
+      const proto = h.get("x-forwarded-proto") ?? "https";
+      await notifyBrokerOfSubmission({
+        ownerName: link.owner_name,
+        ownerEmail,
+        loanRef: result.opportunity_number ?? result.loan_number ?? result.id,
+        loanUrl: host ? `${proto}://${host}/loans/${result.id}` : null,
+        values: clean,
+      }).catch(() => {});
+    }
     return { ok: true };
   } catch {
     return { ok: false, error: "Something went wrong submitting the form. Please try again." };
