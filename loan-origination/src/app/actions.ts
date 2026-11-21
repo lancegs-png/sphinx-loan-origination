@@ -192,12 +192,17 @@ export async function submitPublicIntake(input: {
     .filter(Boolean)
     .join(", ");
 
+  // A broker's own shareable link ties the deal to that broker: add them as a 'broker' participant
+  // (via createdByRole) so it lands in their pipeline, and set the loan's created_by to them.
+  const isBrokerLink = link.owner_type === "broker" && !!link.owner_user_id;
   try {
     const result = await openDeal(createServiceRoleClient(), {
       address,
       guarantorFirst: clean.guarantor_first_name ?? "",
       guarantorLast: clean.guarantor_last_name ?? "",
       stage: "intake",
+      createdByUserId: isBrokerLink ? link.owner_user_id : null,
+      createdByRole: isBrokerLink ? "broker" : undefined,
       accountManagerId: link.owner_type === "sphinx_originator" ? link.owner_user_id : null,
       intake: clean,
     });
@@ -1629,6 +1634,47 @@ export async function submitBrokerIntake(
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Could not submit the deal" };
   }
+}
+
+/**
+ * Broker portal: the broker's own shareable intake link. Returns the existing one or creates it
+ * (service role, since intake_links is lending-team-only under RLS). A submission through this
+ * link opens a deal attributed to this broker and adds them as a participant, so it lands in
+ * their pipeline. White-label by default. Brokers only.
+ */
+export async function getMyBrokerIntakeLink(): Promise<
+  { ok: true; token: string } | { ok: false; error: string }
+> {
+  const auth = await requireBroker();
+  if ("error" in auth) return { ok: false, error: auth.error };
+
+  const admin = createServiceRoleClient();
+  const { data: existing } = await admin
+    .from("intake_links")
+    .select("token")
+    .eq("owner_type", "broker")
+    .eq("owner_user_id", auth.userId)
+    .eq("active", true)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (existing?.token) return { ok: true, token: existing.token as string };
+
+  const token = newLinkToken();
+  const label = `${auth.fullName || auth.email || "Broker"} — intake link`;
+  const { error } = await admin.from("intake_links").insert({
+    token,
+    label,
+    owner_type: "broker",
+    owner_user_id: auth.userId,
+    owner_name: auth.fullName,
+    owner_email: auth.email || null,
+    branding: "white_label",
+    active: true,
+    created_by: auth.userId,
+  });
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, token };
 }
 
 export type ChecklistItemInput = {
