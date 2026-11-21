@@ -75,7 +75,7 @@ export type FieldDef = {
   key: string;
   label: string;
   section: string; // loan | property | borrower | guarantor | trade | contact
-  type: "text" | "number" | "currency" | "percent" | "date" | "select";
+  type: "text" | "number" | "currency" | "percent" | "date" | "select" | "email" | "phone";
   options: string[];
   lender_only: boolean;
   broker_visible: boolean; // a lender-only field a broker may still read (broker-safe subset)
