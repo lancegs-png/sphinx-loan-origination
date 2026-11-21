@@ -12,8 +12,9 @@ export function navFor(profile?: Pick<Profile, "lender_user_type" | "external_ty
     nav.push({ href: "/intake", label: "New Intake", icon: "pipeline", match: "prefix" });
     nav.push({ href: "/guarantors", label: "Guarantors & Entities", icon: "people", match: "prefix" });
   } else if (profile?.external_type === "broker") {
-    // Broker portal: submit a new loan via the intake form.
+    // Broker portal: submit a new loan, or get a shareable intake link for their network.
     nav.push({ href: "/intake", label: "New Loan", icon: "pipeline", match: "prefix" });
+    nav.push({ href: "/share-intake", label: "Share Intake Link", icon: "people", match: "prefix" });
   }
   if (profile?.lender_user_type === "admin") {
     nav.push({ href: "/admin", label: "Settings", icon: "settings", match: "prefix" });
