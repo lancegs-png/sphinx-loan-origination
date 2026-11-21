@@ -13,7 +13,7 @@ import { syncLoanToDashboard } from "@/lib/google/dashboard";
 import { pushFieldsToSheet, reconcileLoanSheet } from "@/lib/google/sheet-sync";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { generateTempPassword, resetTempPassword } from "@/lib/users";
-import { logEvent } from "@/lib/audit";
+import { logEvent, loadLoanActivity, type ActivityEvent } from "@/lib/audit";
 import { answerLoanQuestion } from "@/lib/ai/record-keeper";
 import { loadLoanChecklist } from "@/lib/checklist";
 import { openDeal } from "@/lib/loans/open-deal";
@@ -21,7 +21,7 @@ import { getActiveLink, isRateLimited, recordSubmission, newLinkToken } from "@/
 import { STAGES } from "@/lib/stages";
 import { isLoanStatus } from "@/lib/status";
 import type { QuoteField } from "@/lib/program-ai-config";
-import type { DealContact, InternalNote } from "@/lib/types";
+import type { DealContact, InternalNote, FieldValues } from "@/lib/types";
 
 /**
  * Open a new DSCR deal end-to-end from a short form: the Drive folder (+ subfolders +
@@ -750,16 +750,18 @@ export async function saveLoanField(input: {
     });
   }
 
-  // Recompute calculated fields from the new inputs (never blocks the save).
+  // Recompute calculated fields from the new inputs (never blocks the save). Reuse the returned
+  // values for the sheet push so we don't reload loan_field_values a second time.
+  let recomputed: FieldValues | undefined;
   try {
-    await recomputeLoan(input.loanId);
+    recomputed = await recomputeLoan(input.loanId);
   } catch {
     /* calc is best-effort */
   }
   // Live mirror into the loan's Google Sheet (app -> sheet). Best-effort; a Sheets error
   // must never fail the save. API writes don't trigger the sheet's onEdit, so no loop.
   try {
-    await pushFieldsToSheet(input.loanId, [idx > 1 ? `${input.key}#${idx}` : input.key]);
+    await pushFieldsToSheet(input.loanId, [idx > 1 ? `${input.key}#${idx}` : input.key], recomputed);
   } catch {
     /* sheet sync is best-effort */
   }
@@ -884,6 +886,29 @@ export async function addInternalNote(input: {
     .single();
   if (error || !data) return { ok: false, error: error?.message ?? "Couldn’t save the note." };
   return { ok: true, note: data as InternalNote };
+}
+
+/** Load a loan's internal notes — lender-only. The Notes tab fetches these on open so they're
+ *  not part of the loan page's initial load. */
+export async function fetchLoanNotes(loanId: string): Promise<InternalNote[]> {
+  const auth = await requireLender();
+  if ("error" in auth) return [];
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("internal_notes")
+    .select("*, author:author_id(full_name,email)")
+    .eq("loan_id", loanId)
+    .order("created_at", { ascending: true });
+  return (data as InternalNote[]) ?? [];
+}
+
+/** Load a loan's activity log — lender-only. The Activity tab fetches this on open so it's not
+ *  part of the loan page's initial load. */
+export async function fetchLoanActivity(loanId: string): Promise<ActivityEvent[]> {
+  const auth = await requireLender();
+  if ("error" in auth) return [];
+  const supabase = await createClient();
+  return loadLoanActivity(supabase, loanId);
 }
 
 // ---------- Deal contacts (extra people on the People tab) ----------

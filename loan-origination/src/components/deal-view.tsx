@@ -1,12 +1,10 @@
 import Link from "next/link";
 import { StageHeader } from "./stage-header";
 import { DealTabs } from "./deal-tabs";
-import type { ActivityEvent } from "@/lib/activity";
 import type {
   ChecklistItem,
   FieldDef,
   FieldValues,
-  InternalNote,
   Loan,
   LoanDocument,
   Message,
@@ -25,7 +23,6 @@ export function DealView({
   loan,
   messages,
   participants,
-  internalNotes,
   currentUserId,
   currentRole,
   isLender,
@@ -35,14 +32,12 @@ export function DealView({
   checklist,
   stageTasks,
   documents,
-  activity,
   fieldLabels,
   atProcessing,
 }: {
   loan: Loan;
   messages: Message[];
   participants: Participant[];
-  internalNotes: InternalNote[];
   currentUserId: string;
   currentRole: string;
   isLender: boolean;
@@ -52,7 +47,6 @@ export function DealView({
   checklist: ChecklistItem[];
   stageTasks: StageTaskGroup[];
   documents: LoanDocument[];
-  activity: ActivityEvent[];
   fieldLabels: Record<string, string>;
   atProcessing: boolean;
 }) {
@@ -97,7 +91,6 @@ export function DealView({
         loan={loan}
         messages={messages}
         participants={participants}
-        internalNotes={internalNotes}
         currentUserId={currentUserId}
         currentRole={currentRole}
         isLender={isLender}
@@ -107,7 +100,6 @@ export function DealView({
         checklist={checklist}
         stageTasks={stageTasks}
         documents={documents}
-        activity={activity}
         fieldLabels={fieldLabels}
         atProcessing={atProcessing}
       />

@@ -4,9 +4,8 @@ import { createClient } from "@/lib/supabase/server";
 import { loadFieldValues } from "@/lib/fields";
 import { loadLoanChecklist, loadLoanDocuments } from "@/lib/checklist";
 import { loadLoanStageTasks } from "@/lib/stage-tasks";
-import { loadLoanActivity, type ActivityEvent } from "@/lib/audit";
 import { DealView } from "@/components/deal-view";
-import type { FieldDef, FieldValues, InternalNote, Loan, Message, Participant } from "@/lib/types";
+import type { FieldDef, FieldValues, Loan, Message, Participant } from "@/lib/types";
 
 /**
  * Whether a field applies to a loan's program. A field with no program scope applies
@@ -59,18 +58,12 @@ export default async function LoanPage({
   // The rest of the deal's data is independent (only the checklist needs the loan's
   // program), so fetch it in one parallel wave instead of ~8 sequential round-trips —
   // this is what makes page loads and refreshes (e.g. a stage change) feel snappy.
-  const [messagesRes, participantsRes, internalNotes, fieldDefsRes, fieldValues, checklist, stageTasks, documents, activity, programKey] =
+  // Internal Notes and the Activity log are lender-only, single-tab datasets — their panels fetch
+  // them on open (fetchLoanNotes / fetchLoanActivity), so they're not part of this initial wave.
+  const [messagesRes, participantsRes, fieldDefsRes, fieldValues, checklist, stageTasks, documents, programKey] =
     await Promise.all([
       supabase.from("messages").select("*").eq("loan_id", id).order("created_at", { ascending: true }),
       supabase.from("deal_participants").select("*, profiles(*)").eq("loan_id", id),
-      isLender
-        ? supabase
-            .from("internal_notes")
-            .select("*, author:author_id(full_name,email)")
-            .eq("loan_id", id)
-            .order("created_at", { ascending: true })
-            .then((r) => (r.data as InternalNote[]) ?? [])
-        : Promise.resolve([] as InternalNote[]),
       supabase
         .from("field_definitions")
         .select("key,label,section,type,options,lender_only,broker_visible,sort,verifiable,repeat_group,source,required_stage,calc_key,programs")
@@ -80,8 +73,6 @@ export default async function LoanPage({
       // Borrowers / brokers see only the "all"-visibility tasks (read-only); the loader filters.
       loadLoanStageTasks(supabase, id, typedLoan.program_id, isLender),
       loadLoanDocuments(supabase, id),
-      // Activity log is a lender-only tab; load it only for the lending team.
-      isLender ? loadLoanActivity(supabase, id) : Promise.resolve([] as ActivityEvent[]),
       // The loan's program key (loan_type_key) scopes which data fields apply.
       typedLoan.program_id
         ? supabase
@@ -113,7 +104,6 @@ export default async function LoanPage({
       loan={loan as Loan}
       messages={(messages as Message[]) ?? []}
       participants={parts}
-      internalNotes={internalNotes}
       currentUserId={userId}
       currentRole={myRole}
       isLender={isLender}
@@ -123,7 +113,6 @@ export default async function LoanPage({
       checklist={checklist}
       stageTasks={stageTasks}
       documents={documents}
-      activity={activity}
       fieldLabels={fieldLabels}
       atProcessing={atProcessing}
     />
