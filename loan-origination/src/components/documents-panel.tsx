@@ -39,6 +39,8 @@ const VISIBILITY_LABEL: Record<string, string> = {
 
 // Item (status dot + name) | Access | Last Note — shared by the header and every row.
 const GRID = "grid grid-cols-[minmax(15rem,2.4fr)_7rem_minmax(8rem,1.4fr)] items-stretch";
+// Same, minus the lender-only Access column (non-lender views: broker / borrower).
+const GRID_NO_ACCESS = "grid grid-cols-[minmax(15rem,2.4fr)_minmax(8rem,1.4fr)] items-stretch";
 
 function Dot({ status, size = 11 }: { status: string; size?: number }) {
   return (
@@ -135,6 +137,7 @@ export function DocumentsPanel({
   canEdit,
   canUpload,
   canGenerate,
+  showAccess = true,
 }: {
   loanId: string;
   items: ChecklistItem[];
@@ -143,10 +146,14 @@ export function DocumentsPanel({
   /** Can add/remove files. Defaults to canEdit; brokers get upload without status/note editing. */
   canUpload?: boolean;
   canGenerate: boolean;
+  /** Show the lender-only Access (visibility) column. Hidden for brokers/borrowers. */
+  showAccess?: boolean;
 }) {
   // Uploading files is separable from editing statuses/notes: brokers upload but don't manage the
   // checklist. Rename/delete of individual files stays gated on canEdit (lending team).
   const canUploadFiles = canUpload ?? canEdit;
+  // Non-lenders see a single visibility tier, so the Access column is noise — drop it + its track.
+  const grid = showAccess ? GRID : GRID_NO_ACCESS;
   const [rows, setRows] = useState<ChecklistItem[]>(items);
   const [docs, setDocs] = useState<LoanDocument[]>(documents);
   const [busy, setBusy] = useState(false);
@@ -332,9 +339,9 @@ export function DocumentsPanel({
       <div className="overflow-x-auto">
         <div className="card min-w-[680px] overflow-hidden text-sm">
           {/* Column headers */}
-          <div className={`${GRID} border-b border-line bg-surface-2 text-[11px] font-semibold uppercase tracking-wide text-muted`}>
+          <div className={`${grid} border-b border-line bg-surface-2 text-[11px] font-semibold uppercase tracking-wide text-muted`}>
             <div className="px-3 py-2">Item</div>
-            <div className="border-l border-line px-3 py-2">Access</div>
+            {showAccess && <div className="border-l border-line px-3 py-2">Access</div>}
             <div className="border-l border-line px-3 py-2">Last Note</div>
           </div>
 
@@ -398,7 +405,7 @@ export function DocumentsPanel({
                           dragItem === r.id ? "bg-gold/5 ring-2 ring-inset ring-gold/60" : ""
                         }`}
                       >
-                        <div className={`${GRID} min-h-[2.5rem]`}>
+                        <div className={`${grid} min-h-[2.5rem]`}>
                           {/* Item: chevron (if files) + status dot (click to change) + name + count + upload */}
                           <div className="flex items-center gap-1.5 pl-8 pr-3 py-1.5 font-medium text-fg">
                             {files.length > 0 ? (
@@ -449,19 +456,21 @@ export function DocumentsPanel({
                             )}
                           </div>
 
-                          {/* Access — visibility (who sees it on the deal); set in Settings / the sheet */}
-                          <div className="flex items-center border-l border-line px-3 py-1.5">
-                            <span
-                              className={`rounded px-1.5 py-0.5 text-[11px] font-medium ${
-                                r.visibility === "lender_only"
-                                  ? "bg-navy/10 text-navy"
-                                  : "bg-surface-2 text-muted"
-                              }`}
-                              title={r.visibility === "lender_only" ? "Visible to the lending team only" : "Visible to all (lender, borrower, broker)"}
-                            >
-                              {VISIBILITY_LABEL[r.visibility] ?? "All"}
-                            </span>
-                          </div>
+                          {/* Access — visibility (who sees it on the deal); set in Settings / the sheet. Lender-only column. */}
+                          {showAccess && (
+                            <div className="flex items-center border-l border-line px-3 py-1.5">
+                              <span
+                                className={`rounded px-1.5 py-0.5 text-[11px] font-medium ${
+                                  r.visibility === "lender_only"
+                                    ? "bg-navy/10 text-navy"
+                                    : "bg-surface-2 text-muted"
+                                }`}
+                                title={r.visibility === "lender_only" ? "Visible to the lending team only" : "Visible to all (lender, borrower, broker)"}
+                              >
+                                {VISIBILITY_LABEL[r.visibility] ?? "All"}
+                              </span>
+                            </div>
+                          )}
 
                           {/* Last Note — inline editable */}
                           <div className="flex items-stretch border-l border-line">
