@@ -196,6 +196,17 @@ export const APPLICATION_FORM_SPEC: IntakeSectionSpec[] = [
       { key: "loan_request_summary", label: "Anything else we should know?", type: "textarea" },
     ],
   },
+  {
+    id: "acknowledgment",
+    title: "Acknowledgment & Signature",
+    blurb:
+      "By typing your name below you adopt it as your electronic signature and certify that the information in this application is true and complete to the best of your knowledge, and authorize the lender to verify it and obtain consumer credit reports.",
+    fields: [
+      { key: "ack_consent", label: "I have read and agree to the acknowledgment above", type: "select", required: true, options: ["Yes"] },
+      { key: "sig_guarantor_name", label: "Guarantor — type your full legal name to sign", type: "text", required: true },
+      { key: "sig_coguarantor_name", label: "Co-guarantor — type full legal name to sign", type: "text", required: true, when: hasCoguarantor },
+    ],
+  },
 ];
 
 /** Every spec key, in order (for snapshot/seeding). */

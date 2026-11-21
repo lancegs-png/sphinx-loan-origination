@@ -28,6 +28,8 @@ import {
   markApplicationLinkCompleted,
 } from "@/lib/application/links";
 import { APPLICATION_CONTROL_KEYS, coguarantorDictKey } from "@/lib/application/form-spec";
+import { fillApplicationPdf } from "@/lib/application/pdf-fill";
+import { placeSignedApplication } from "@/lib/application/documents";
 import { loadFieldDefs } from "@/lib/field-defs";
 import { sendMail } from "@/lib/email";
 import { STAGES } from "@/lib/stages";
@@ -257,14 +259,22 @@ export async function submitApplication(input: {
   }
 
   const admin = createServiceRoleClient();
+  const h = await headers();
+  const ip = h.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
+
+  // Typed e-signatures — captured for the authentication certificate, not stored as loan fields.
+  const signer = (clean.sig_guarantor_name ?? "").trim();
+  const cosigner = (clean.sig_coguarantor_name ?? "").trim() || null;
+  if (!signer) return { ok: false, error: "Please type your name to sign the application." };
+
   try {
-    // Partition the answers: drop form-only controls; co-guarantor -> guarantor idx 2;
+    // Partition: drop form-only controls + signature/ack fields; co-guarantor -> guarantor idx 2;
     // declarations -> snapshot; everything else -> the dictionary at idx 1.
     const primary: Record<string, string> = {};
     const coguarantor: Record<string, string> = {};
     const declarations: Record<string, string> = {};
     for (const [k, v] of Object.entries(clean)) {
-      if (APPLICATION_CONTROL_KEYS.has(k)) continue;
+      if (APPLICATION_CONTROL_KEYS.has(k) || k.startsWith("sig_") || k.startsWith("ack_")) continue;
       if (k.startsWith("decl_")) {
         declarations[k] = v;
         continue;
@@ -293,18 +303,27 @@ export async function submitApplication(input: {
       await upsertFieldValue(admin, { loanId: link.loan_id, key, idx: 2, valueKind: "initial", value });
     }
 
-    // Save the full submission as a snapshot (merge, don't clobber other custom_fields).
+    // Merge the full snapshot + the signature record onto the loan (don't clobber other custom_fields).
     const { data: loanRow } = await admin
       .from("loans")
-      .select("custom_fields")
+      .select("custom_fields,loan_number,opportunity_number")
       .eq("id", link.loan_id)
       .maybeSingle();
+    const loanRef = loanRow?.loan_number ?? loanRow?.opportunity_number ?? link.loan_id;
+    const signedAt = new Date();
     const custom = (loanRow?.custom_fields ?? {}) as Record<string, unknown>;
     custom.application_snapshot = {
-      submitted_at: new Date().toISOString(),
+      submitted_at: signedAt.toISOString(),
       source: "application_form",
       values: clean,
       declarations,
+    };
+    custom.application = {
+      signed_by: signer,
+      cosigned_by: cosigner,
+      signed_at: signedAt.toISOString(),
+      ip,
+      email: clean.guarantor_email ?? "",
     };
     await admin.from("loans").update({ custom_fields: custom }).eq("id", link.loan_id);
 
@@ -315,8 +334,19 @@ export async function submitApplication(input: {
       /* non-fatal */
     }
 
-    const h = await headers();
-    const ip = h.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
+    // Fill + flatten the application PDF with an authentication certificate, then drop it into the
+    // "Loan application" Documents slot and mark it Yellow ("Ready for Review").
+    const pdfBytes = await fillApplicationPdf(clean, {
+      loanRef,
+      guarantorSigner: signer,
+      coguarantorSigner: cosigner,
+      email: clean.guarantor_email ?? "",
+      ip,
+      signedAt,
+      sentTo: clean.guarantor_email ?? null,
+    });
+    await placeSignedApplication(admin, link.loan_id, pdfBytes, `Loan Application - ${loanRef} (signed).pdf`);
+
     await recordApplicationSubmission(link.id, link.token, link.loan_id, ip);
     await markApplicationLinkCompleted(link.id);
     return { ok: true };
