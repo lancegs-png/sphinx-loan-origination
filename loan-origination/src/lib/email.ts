@@ -42,6 +42,22 @@ export function emailFrom(): string {
   return process.env.SMTP_FROM || process.env.SMTP_USER || "processing@sphinxcap.com";
 }
 
+/**
+ * Authenticate to the SMTP server WITHOUT sending anything (nodemailer `verify`). Lets an ops
+ * health check confirm the SMTP_* env is present and the credentials work in a given environment.
+ * Returns `configured: false` when the vars are absent (the sender is a no-op in that state).
+ */
+export async function verifyTransport(): Promise<{ ok: boolean; configured: boolean; error?: string }> {
+  const t = getTransport();
+  if (!t) return { ok: false, configured: false };
+  try {
+    await t.verify();
+    return { ok: true, configured: true };
+  } catch (e) {
+    return { ok: false, configured: true, error: e instanceof Error ? e.message : "verify failed" };
+  }
+}
+
 export async function sendMail(input: MailInput): Promise<{ ok: boolean; skipped?: boolean; error?: string }> {
   const t = getTransport();
   if (!t) return { ok: false, skipped: true };
