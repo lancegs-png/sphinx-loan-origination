@@ -1,7 +1,11 @@
 # DU 3.2 / MISMO 3.4 export — field-gap map
 
-**Status:** planning reference (no code yet). Decides what we can emit today and what the
-dictionary still needs before a URLA/1003 file imports cleanly into an investor's system.
+**Status:** reference for extending the shipped **MISMO 3.4 export**
+(`src/lib/templates/mismo.ts`, the "MISMO 3.4 (URLA)" Templates entry). The legacy **DU 3.2 flat
+file is retired** — Fannie Mae's AUS stopped accepting it on 2022-03-01 and replaced it with the
+MISMO 3.4 model — so we build only MISMO 3.4. This map records which 1003/URLA data points we emit
+today and which need new dictionary fields first. The mapper omits (never fabricates) anything we
+don't capture, so the file grows as fields are added.
 
 ## TL;DR
 
@@ -253,20 +257,23 @@ Ordered by how much they block a basic importable DU 3.2.
 - Per-property **REO schedule** object.
 - **Employment & income** block (only if consumer/owner-occupied loans are ever added).
 
-## Recommendation
+## What shipped, and what to extend
 
-A **minimum importable DU 3.2 for a DSCR deal** is close. The identity fields already exist (`0024`);
-the real work is **Tier 2**: parse the mailing addresses into components, wire the ~6
-originator/occupancy/mortgage-type constants, and add a defaulted Declarations block. With that we
-can emit a file carrying the loan, subject property, guarantor identity, and entity vesting.
-Income/assets/liabilities/REO ride empty or aggregated (aggregates read from the intake snapshot).
+The **MISMO 3.4 export is live**: `src/lib/templates/mismo.ts` (`buildMismoXml`), served as the
+"MISMO 3.4 (URLA)" entry through the existing `/api/loans/[id]/template/[id]` route (new `xml`
+format). It emits the loan, subject property, the guarantor as the URLA Borrower, and the entity as
+a `LEGAL_ENTITY` party, with occupancy = Investment and mortgage type = Conventional. Anything we
+don't capture is omitted, never faked — so the document grows field by field.
+
+Highest-value additions next, to make a file an AUS/investor accepts more readily:
+- **Tier 2 (small):** parse the mailing addresses into components; populate the guarantor
+  SSN/DOB (already in the dictionary via `0024`) so the Borrower party carries identity; a
+  defaulted Declarations block.
+- **Tier 3 (structural):** itemized assets/liabilities, the per-property REO schedule, and
+  employment/income — only if consumer/owner-occupied loans are ever added. Today's aggregates
+  (`liquid_assets`, `net_worth`, `properties_owned_count`) can be read from the intake snapshot.
 
 Expect **validation rounds** with whichever investor/AUS consumes the file — business-purpose DSCR
-imports commonly reject on empty employment/REO even when the loan doesn't qualify on them, and the
-exact DU 3.2 record layout vs. MISMO 3.4 enumerations differ in fussy ways. Build **DU 3.2 first**
-(simpler flat file), validate against one real deal, then add the MISMO 3.4 serializer over the same
-mapper.
-
-**Suggested shape when we build:** a `src/lib/urla/data.ts` mapper (mirrors `term-sheet/data.ts`,
-reads `loan_field_values` via `cur()`), then one serializer per format (`du32.ts`, `mismo34.ts`)
-behind a Templates-tab entry, same `/api/loans/[id]/template/[id]` download route.
+imports commonly flag empty employment/REO even when the loan doesn't qualify on them, and ULAD
+enumerations are fussy. Extend the one mapper (`mismo.ts`); the per-element mapping below is the
+checklist for what each new dictionary field unlocks.
