@@ -1397,6 +1397,13 @@ export async function inviteBroker(input: {
       .from("profiles")
       .update({ full_name: fullName || null, external_type: "broker", is_lending_team: false, lender_user_type: null })
       .eq("id", userId);
+    // Add/refresh this account in the reusable broker directory (unified with saved brokers).
+    const { data: existing } = await admin.from("brokers").select("id").eq("user_id", userId).maybeSingle();
+    if (existing?.id) {
+      await admin.from("brokers").update({ name: fullName || null, email, updated_at: new Date().toISOString() }).eq("id", existing.id);
+    } else {
+      await admin.from("brokers").insert({ user_id: userId, name: fullName || null, email, created_by: userId });
+    }
     return linkBrokerToLoans(userId, email);
   };
 

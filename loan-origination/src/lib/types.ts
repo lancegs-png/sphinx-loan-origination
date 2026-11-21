@@ -186,3 +186,12 @@ export type Entity = {
   stateOfFormation: string;
   members: EntityMember[];
 };
+
+/** A reusable broker directory record. `userId` is set when this broker has a portal account. */
+export type Broker = {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  userId: string | null;
+};
