@@ -236,6 +236,7 @@ export function DealTabs({
                   canEdit={isLender}
                   canUpload={isLender || isBroker}
                   canGenerate={isLender && atProcessing}
+                  showAccess={isLender}
                 />
               )}
 
