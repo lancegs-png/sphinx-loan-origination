@@ -15,7 +15,7 @@ export type TemplateDef = {
   requiresVerified: boolean;
   requiredKeys: string[]; // dictionary field keys that must have a current value
   generatable: boolean; // wired for download now
-  format: "docx" | "pdf" | "xlsx";
+  format: "docx" | "pdf" | "xlsx" | "xml";
 };
 
 export const TEMPLATES: TemplateDef[] = [
@@ -161,6 +161,23 @@ export const TEMPLATES: TemplateDef[] = [
     requiredKeys: ["loan_amount", "interest_rate", "property_address", "guarantor_first_name"],
     generatable: true,
     format: "xlsx",
+  },
+  {
+    // MISMO v3.4 (ULAD) loan export — the current interchange format that replaced the retired
+    // DU 3.2 flat file. Built from the fields we capture today; extend src/lib/templates/mismo.ts
+    // as more dictionary fields are added.
+    id: "mismo_3_4",
+    name: "MISMO 3.4 (URLA)",
+    program: "both",
+    stage: "processing",
+    branding: "sphinx",
+    requiresVerified: false,
+    requiredKeys: [
+      "property_address", "loan_amount", "interest_rate", "loan_term_months", "loan_purpose",
+      "guarantor_first_name", "guarantor_last_name", "borrower_entity",
+    ],
+    generatable: true,
+    format: "xml",
   },
 ];
 

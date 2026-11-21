@@ -3,6 +3,7 @@ import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { loadFieldValues, upsertFieldValue } from "@/lib/fields";
 import { loadCompanyConfig } from "@/lib/company";
 import { buildDataTapeCsv } from "@/lib/templates/data-tape";
+import { buildMismoXml } from "@/lib/templates/mismo";
 import { buildTemplateData, fillDocx, money } from "@/lib/templates/docx";
 import { docxToPdf } from "@/lib/templates/pdf";
 import { renderDocTemplate, docTemplatesConfigured } from "@/lib/google/docs";
@@ -71,7 +72,8 @@ export async function GET(
     isInternal: true,
     payload: {
       template: (def as { name?: string }).name ?? def.id,
-      format: def.id === "data_tape" ? "csv" : asPdf ? "pdf" : "docx",
+      format:
+        def.id === "data_tape" ? "csv" : def.id === "mismo_3_4" ? "xml" : asPdf ? "pdf" : "docx",
     },
   });
 
@@ -96,6 +98,20 @@ export async function GET(
       headers: {
         "Content-Type": "text/csv; charset=utf-8",
         "Content-Disposition": `attachment; filename="Data Tape - ${street}.csv"`,
+        "Cache-Control": "no-store",
+      },
+    });
+  }
+
+  // MISMO 3.4 (ULAD) XML export — built from current field values.
+  if (def.id === "mismo_3_4") {
+    const fv = await loadFieldValues(supabase, id);
+    const cur = (key: string, idx = 1) => fv[idx > 1 ? `${key}#${idx}` : key]?.current;
+    const xml = buildMismoXml({ cur, loanNumber: ref });
+    return new Response(xml, {
+      headers: {
+        "Content-Type": "application/xml; charset=utf-8",
+        "Content-Disposition": `attachment; filename="MISMO 3.4 - ${street}.xml"`,
         "Cache-Control": "no-store",
       },
     });
