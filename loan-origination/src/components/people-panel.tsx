@@ -4,7 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { saveLoanField, saveDealContacts } from "@/app/actions";
 import { addLoanGuarantor, removeLoanGuarantor, setLoanEntity } from "@/app/guarantors/actions";
-import { GuarantorPicker, EntityPicker } from "@/components/party-picker";
+import { setLoanBroker } from "@/app/brokers/actions";
+import { GuarantorPicker, EntityPicker, BrokerPicker } from "@/components/party-picker";
 import type { DealContact, FieldValues, Participant } from "@/lib/types";
 
 function participantRoleLabel(role: string) {
@@ -32,6 +33,15 @@ export function PeoplePanel({
   initialContacts: DealContact[];
   canEdit: boolean;
 }) {
+  const router = useRouter();
+  // Pick a broker from the directory: copies their contact onto the loan and, when the directory
+  // entry is a portal account, links that broker to the deal.
+  async function pickBroker(id: string | null) {
+    if (!id) return;
+    const res = await setLoanBroker(loanId, id);
+    if (res.ok) router.refresh();
+  }
+
   return (
     <div className="flex flex-col gap-6">
       {/* Accounts with a login to this deal */}
@@ -94,6 +104,12 @@ export function PeoplePanel({
             ]}
           />
         </div>
+        {canEdit && (
+          <div className="mt-3 max-w-md">
+            <p className="mb-1 text-xs font-medium text-muted">Use a saved broker (or a portal account)</p>
+            <BrokerPicker value={null} onChange={pickBroker} />
+          </div>
+        )}
       </Group>
 
       <ExtraContacts loanId={loanId} initial={initialContacts} canEdit={canEdit} />

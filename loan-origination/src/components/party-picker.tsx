@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { listGuarantors, listEntities, saveGuarantor, saveEntity } from "@/app/guarantors/actions";
-import type { Entity, Guarantor } from "@/lib/types";
+import { listBrokers, saveBroker } from "@/app/brokers/actions";
+import type { Broker, Entity, Guarantor } from "@/lib/types";
 
 const guarName = (g: Guarantor) => [g.firstName, g.lastName].filter(Boolean).join(" ") || "(no name)";
 
@@ -129,6 +130,64 @@ export function EntityPicker({ value, onChange }: { value: string | null; onChan
         <option value="">No entity / select…</option>
         {list.map((e) => (
           <option key={e.id} value={e.id}>{e.name}{e.ein ? ` · EIN ${e.ein}` : ""}</option>
+        ))}
+      </select>
+      <button type="button" onClick={() => setAdding(true)} className="btn btn-secondary btn-sm shrink-0">+ New</button>
+    </div>
+  );
+}
+
+/** Select a saved broker — or a broker portal account — or quick-create one (also saved to the
+ *  directory). Reports its id. */
+export function BrokerPicker({ value, onChange }: { value: string | null; onChange: (id: string | null) => void }) {
+  const [list, setList] = useState<Broker[]>([]);
+  const [adding, setAdding] = useState(false);
+  const [draft, setDraft] = useState({ name: "", email: "", phone: "" });
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    listBrokers().then(setList).catch(() => {});
+  }, []);
+
+  async function createNew() {
+    if (!draft.name.trim() && !draft.email.trim()) {
+      setAdding(false);
+      return;
+    }
+    setBusy(true);
+    const res = await saveBroker({ id: "", ...draft });
+    setBusy(false);
+    if (res.ok && res.id) {
+      setList((p) => [...p, { id: res.id!, ...draft, userId: null }]);
+      onChange(res.id);
+      setDraft({ name: "", email: "", phone: "" });
+      setAdding(false);
+    }
+  }
+
+  if (adding) {
+    return (
+      <div className="rounded-md border border-line p-2">
+        <div className="grid grid-cols-3 gap-2">
+          <input value={draft.name} onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))} placeholder="Name" className="field field-sm" />
+          <input value={draft.email} onChange={(e) => setDraft((d) => ({ ...d, email: e.target.value }))} placeholder="Email" className="field field-sm" />
+          <input value={draft.phone} onChange={(e) => setDraft((d) => ({ ...d, phone: e.target.value }))} placeholder="Phone" className="field field-sm" />
+        </div>
+        <div className="mt-2 flex justify-end gap-2">
+          <button type="button" onClick={() => setAdding(false)} className="btn btn-ghost btn-sm">Cancel</button>
+          <button type="button" onClick={createNew} disabled={busy} className="btn btn-primary btn-sm">{busy ? "Adding…" : "Add broker"}</button>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="flex gap-2">
+      <select value={value ?? ""} onChange={(e) => onChange(e.target.value || null)} className="field field-sm flex-1" aria-label="Broker">
+        <option value="">Select a saved broker…</option>
+        {list.map((b) => (
+          <option key={b.id} value={b.id}>
+            {(b.name || b.email || "(no name)") + (b.name && b.email ? ` · ${b.email}` : "") + (b.userId ? " · account" : "")}
+          </option>
         ))}
       </select>
       <button type="button" onClick={() => setAdding(true)} className="btn btn-secondary btn-sm shrink-0">+ New</button>
